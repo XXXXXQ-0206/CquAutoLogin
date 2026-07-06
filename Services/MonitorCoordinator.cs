@@ -356,7 +356,7 @@ public sealed class MonitorCoordinator : IDisposable
         Publish(new MonitorState
         {
             Headline = "正在检查校园网登录",
-            Detail = $"{reason}，已锁定 {candidate.Name}，正在确认重庆大学 Portal 登录状态。",
+            Detail = $"{reason}，已锁定 {candidate.Name}，正在确认 CQU Portal 登录状态。",
             InternetState = "公网不可用",
             CampusState = "查询中",
             PreferredNetwork = DescribePreferred(candidate),
@@ -408,20 +408,20 @@ public sealed class MonitorCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Warn($"读取 Portal 配置失败，将使用重庆大学 Portal 默认登录参数继续尝试：{ex.Message}");
+            _logger.Warn($"读取 Portal 配置失败，将使用 CQU Portal 默认登录参数继续尝试：{ex.Message}");
             config = CreateDefaultPortalConfig();
         }
 
         if (config is null)
         {
-            _logger.Warn($"Portal 未返回有效配置，将使用重庆大学 Portal 默认登录参数继续尝试：{candidate.Name} {candidate.IPv4Address}");
+            _logger.Warn($"Portal 未返回有效配置，将使用 CQU Portal 默认登录参数继续尝试：{candidate.Name} {candidate.IPv4Address}");
             config = CreateDefaultPortalConfig();
         }
 
         Publish(new MonitorState
         {
             Headline = "正在自动登录",
-            Detail = $"{reason}，当前没有检测到有效 Portal 会话，正在使用保存的账号登录重庆大学校园网。",
+            Detail = $"{reason}，当前没有检测到有效 Portal 会话，正在使用保存的账号登录 CQU Portal。",
             InternetState = "公网不可用",
             CampusState = "正在登录",
             PreferredNetwork = DescribePreferred(candidate),

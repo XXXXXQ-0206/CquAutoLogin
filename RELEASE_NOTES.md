@@ -11,4 +11,6 @@ Highlights:
 
 Disclaimer:
 
-This is an unofficial utility and is not affiliated with Chongqing University. Use only with accounts and networks you are authorized to access.
+This is an unofficial utility and is not affiliated with CQU or any network service provider. Use only with accounts and networks you are authorized to access.
+
+This project is designed as a local client-side helper. It only performs ordinary portal status checks and credential-based sign-in requests that a user could initiate through the portal. It contains no destructive operation, scanning, exploitation, privilege escalation, data modification, or server-side control logic, and it is not capable of damaging, destroying, or impairing institutional network facilities, business systems, or third-party systems.
