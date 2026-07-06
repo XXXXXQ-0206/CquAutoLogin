@@ -1,0 +1,8 @@
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.log
+settings.json
+*.zip
