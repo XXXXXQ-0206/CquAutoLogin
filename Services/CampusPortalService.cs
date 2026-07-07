@@ -1,7 +1,6 @@
 using System.Net.Http;
 using System.Net;
 using System.Globalization;
-using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -17,13 +16,7 @@ public sealed class CampusPortalService
 
     public CampusPortalService()
     {
-        var handler = new HttpClientHandler
-        {
-            SslProtocols = SslProtocols.Tls12,
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-        };
-
-        _httpClient = new HttpClient(handler)
+        _httpClient = new HttpClient()
         {
             Timeout = TimeSpan.FromSeconds(10),
             DefaultRequestVersion = HttpVersion.Version11,

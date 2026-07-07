@@ -286,8 +286,7 @@ public partial class App : System.Windows.Application
 
         Process.Start(new ProcessStartInfo
         {
-            FileName = "explorer.exe",
-            Arguments = $"\"{directory}\"",
+            FileName = directory,
             UseShellExecute = true
         });
     }
