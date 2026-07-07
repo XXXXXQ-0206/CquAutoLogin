@@ -7,14 +7,13 @@ public sealed record ProcessResult(int ExitCode, string StandardOutput, string S
 
 public sealed class ProcessRunner
 {
-    public async Task<ProcessResult> RunAsync(string fileName, string arguments, int timeoutMs = 15000, CancellationToken cancellationToken = default)
+    public async Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, int timeoutMs = 15000, CancellationToken cancellationToken = default)
     {
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = fileName,
-                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -24,6 +23,11 @@ public sealed class ProcessRunner
             }
         };
 
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
         process.Start();
 
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -32,5 +36,10 @@ public sealed class ProcessRunner
         await process.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), cancellationToken);
 
         return new ProcessResult(process.ExitCode, await outputTask, await errorTask);
+    }
+
+    public Task<ProcessResult> RunAsync(string fileName, int timeoutMs = 15000, CancellationToken cancellationToken = default, params string[] arguments)
+    {
+        return RunAsync(fileName, arguments, timeoutMs, cancellationToken);
     }
 }

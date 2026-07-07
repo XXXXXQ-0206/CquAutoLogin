@@ -14,7 +14,7 @@ public sealed class WifiService
 
     public async Task<WifiInfo> GetCurrentStateAsync(CancellationToken cancellationToken)
     {
-        var result = await _processRunner.RunAsync("netsh", "wlan show interfaces", cancellationToken: cancellationToken);
+        var result = await _processRunner.RunAsync("netsh", new[] { "wlan", "show", "interfaces" }, cancellationToken: cancellationToken);
         var text = result.StandardOutput;
 
         if (string.IsNullOrWhiteSpace(text) ||
@@ -58,7 +58,7 @@ public sealed class WifiService
 
     public async Task<(bool Accepted, string Message)> ConnectAsync(string ssid, CancellationToken cancellationToken)
     {
-        var result = await _processRunner.RunAsync("netsh", $"wlan connect name=\"{ssid}\"", cancellationToken: cancellationToken);
+        var result = await _processRunner.RunAsync("netsh", new[] { "wlan", "connect", $"name={ssid}" }, cancellationToken: cancellationToken);
         var message = string.IsNullOrWhiteSpace(result.StandardOutput) ? result.StandardError : result.StandardOutput;
 
         var accepted =
