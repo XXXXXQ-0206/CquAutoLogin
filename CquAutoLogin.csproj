@@ -8,6 +8,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\Shiroko.ico</ApplicationIcon>
+    <DefaultItemExcludes>$(DefaultItemExcludes);CquAutoLogin.Tests\**;CquVpnCore.Contracts\**;CquVpnCore.Tests\**;CquVpnCore\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,5 +16,32 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="CquVpnCore\CquVpnCore.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyCquVpnCoreHost" AfterTargets="Build">
+    <ItemGroup>
+      <CquVpnCoreHostFiles Include="$(MSBuildProjectDirectory)\CquVpnCore\bin\$(Configuration)\net9.0-windows\CquVpnCore.exe" />
+      <CquVpnCoreHostFiles Include="$(MSBuildProjectDirectory)\CquVpnCore\bin\$(Configuration)\net9.0-windows\CquVpnCore.dll" />
+      <CquVpnCoreHostFiles Include="$(MSBuildProjectDirectory)\CquVpnCore\bin\$(Configuration)\net9.0-windows\CquVpnCore.Contracts.dll" />
+      <CquVpnCoreHostFiles Include="$(MSBuildProjectDirectory)\CquVpnCore\bin\$(Configuration)\net9.0-windows\CquVpnCore.deps.json" />
+      <CquVpnCoreHostFiles Include="$(MSBuildProjectDirectory)\CquVpnCore\bin\$(Configuration)\net9.0-windows\CquVpnCore.runtimeconfig.json" />
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(CquVpnCoreHostFiles)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('%(CquVpnCoreHostFiles.Identity)')" />
+  </Target>
+
+  <Target Name="PublishCquVpnCoreHost" AfterTargets="Publish">
+    <MSBuild
+      Projects="$(MSBuildProjectDirectory)\CquVpnCore\CquVpnCore.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=$(PublishSingleFile);IncludeNativeLibrariesForSelfExtract=$(IncludeNativeLibrariesForSelfExtract);PublishDir=$(PublishDir)" />
+  </Target>
 
 </Project>

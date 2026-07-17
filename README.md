@@ -14,6 +14,12 @@ It can:
 - run silently from Windows startup;
 - expose quick actions from a tray menu.
 
+## Experimental VPN Core
+
+The bundled `CquVpnCore` C0/C1 slice starts no official VPN service, Agent, or Tray. It opens the browser portal for user-operated SSO/MFA and records an explicit confirmation through local IPC.
+
+It does **not** establish a VPN tunnel, read browser authentication data, modify routes or DNS, or replace an official client. Its tray state deliberately says that further connection capability is pending. See [the Chinese CquVpnCore note](./docs/CquVpnCore.zh-CN.md) for the precise boundary.
+
 ## Current Portal Notes
 
 The portal integration currently targets:
@@ -41,6 +47,8 @@ dotnet build .\CquAutoLogin.csproj
 ```powershell
 dotnet publish .\CquAutoLogin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\publish
 ```
+
+The self-contained publish directory includes both `CquAutoLogin.exe` and `CquVpnCore.exe`.
 
 ## Configuration
 

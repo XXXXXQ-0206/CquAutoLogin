@@ -7,8 +7,8 @@ public enum TrayMenuCommand
 {
     RunCheck,
     OpenPortal,
-    OpenATrust,
-    ExitATrust,
+    ConnectVpn,
+    ConfirmVpnBrowserLogin,
     OpenSettingsFolder,
     ReloadSettings,
     Exit
@@ -19,7 +19,7 @@ public enum TraySettingToggle
     LaunchAtStartup,
     PreferEthernet,
     AutoConnectCampusWifi,
-    OpenATrustAtStartup
+    OpenVpnPortalAtStartup
 }
 
 public sealed class TrayIconService : IDisposable
@@ -56,12 +56,12 @@ public sealed class TrayIconService : IDisposable
     private const int IdOpenPortal = 1002;
     private const int IdOpenSettingsFolder = 1003;
     private const int IdReloadSettings = 1004;
-    private const int IdOpenATrust = 1005;
-    private const int IdExitATrust = 1006;
+    private const int IdConnectVpn = 1005;
+    private const int IdConfirmVpnBrowserLogin = 1006;
     private const int IdToggleLaunchAtStartup = 1101;
     private const int IdTogglePreferEthernet = 1102;
     private const int IdToggleAutoConnectWifi = 1103;
-    private const int IdToggleOpenATrustAtStartup = 1104;
+    private const int IdToggleOpenVpnPortalAtStartup = 1104;
     private const int IdExit = 1999;
 
     private readonly string _windowClassName = $"CquAutoLogin.TrayWindow.{Guid.NewGuid():N}";
@@ -76,7 +76,6 @@ public sealed class TrayIconService : IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly object _stateLock = new();
     private MonitorSnapshot _snapshot = MonitorSnapshot.Default;
-    private ATrustStatus _aTrustStatus = ATrustStatus.NotDetected;
 
     public TrayIconService(string iconPath)
     {
@@ -107,26 +106,33 @@ public sealed class TrayIconService : IDisposable
 
     public void Update(Models.MonitorState state, Models.AppSettings? settings)
     {
-        var snapshot = MonitorSnapshot.From(state, settings, _aTrustStatus);
+        var snapshot = MonitorSnapshot.From(state, settings);
         lock (_stateLock)
         {
-            _snapshot = snapshot;
+            _snapshot = snapshot with
+            {
+                VpnState = _snapshot.VpnState,
+                IsVpnInstalled = _snapshot.IsVpnInstalled,
+                IsVpnConnected = _snapshot.IsVpnConnected
+            };
+            snapshot = _snapshot;
         }
 
         var icon = snapshot.IsOnline ? _onlineIcon : _offlineIcon;
         ModifyTrayIcon(icon, snapshot.Tooltip);
     }
 
-    public void UpdateATrustStatus(ATrustStatus status)
+    public void UpdateVpnStatus(CquVpnDisplayStatus status)
     {
+        ArgumentNullException.ThrowIfNull(status);
+
         lock (_stateLock)
         {
-            _aTrustStatus = status;
             _snapshot = _snapshot with
             {
-                ATrustState = status.DisplayText,
-                IsATrustInstalled = status.IsInstalled,
-                IsATrustConnected = status.IsConnected
+                VpnState = status.Text,
+                IsVpnInstalled = status.IsCoreRunning,
+                IsVpnConnected = status.IsConnected
             };
         }
     }
@@ -226,7 +232,7 @@ public sealed class TrayIconService : IDisposable
             AppendInfoItem(statusMenu, 2103, $"校园网：{snapshot.CampusState}");
             AppendInfoItem(statusMenu, 2104, $"首选网络：{snapshot.PreferredNetwork}");
             AppendInfoItem(statusMenu, 2105, $"Wi‑Fi：{snapshot.WifiState}");
-            AppendInfoItem(statusMenu, 2106, $"ATrust VPN：{snapshot.ATrustState}");
+            AppendInfoItem(statusMenu, 2106, $"校园 VPN：{snapshot.VpnState}");
             AppendInfoItem(statusMenu, 2107, $"上次动作：{snapshot.LastAction}");
             AppendInfoItem(statusMenu, 2108, $"下次检查：{snapshot.NextCheck}");
             AppendSubMenu(menu, statusMenu, "状态详情");
@@ -234,19 +240,16 @@ public sealed class TrayIconService : IDisposable
             AppendActionItem(menu, IdRunCheck, "立即检测");
             AppendActionItem(menu, IdOpenPortal, "打开认证页");
 
-            var aTrustMenu = CreatePopupMenu();
-            if (aTrustMenu == 0)
+            var vpnMenu = CreatePopupMenu();
+            if (vpnMenu == 0)
             {
-                throw new InvalidOperationException("Failed to create ATrust submenu.");
+                throw new InvalidOperationException("Failed to create VPN submenu.");
             }
 
-            AppendInfoItem(aTrustMenu, 2201, $"状态：{snapshot.ATrustState}");
-            if (snapshot.IsATrustInstalled)
-            {
-                AppendActionItem(aTrustMenu, IdOpenATrust, "打开/连接 ATrust");
-                AppendActionItem(aTrustMenu, IdExitATrust, "关闭 ATrust（完全退出）");
-            }
-            AppendSubMenu(menu, aTrustMenu, "ATrust VPN");
+            AppendInfoItem(vpnMenu, 2201, $"状态：{snapshot.VpnState}");
+            AppendActionItem(vpnMenu, IdConnectVpn, "连接并打开认证页");
+            AppendActionItem(vpnMenu, IdConfirmVpnBrowserLogin, "我已完成浏览器认证");
+            AppendSubMenu(menu, vpnMenu, "校园 VPN");
             AppendSeparator(menu);
 
             var configMenu = CreatePopupMenu();
@@ -268,7 +271,7 @@ public sealed class TrayIconService : IDisposable
             AppendToggleItem(settingsMenu, IdToggleLaunchAtStartup, "开机自启", snapshot.LaunchAtStartup);
             AppendToggleItem(settingsMenu, IdTogglePreferEthernet, "优先使用以太网", snapshot.PreferEthernet);
             AppendToggleItem(settingsMenu, IdToggleAutoConnectWifi, "断网时自动连接 CQU_Wifi", snapshot.AutoConnectCampusWifi);
-            AppendToggleItem(settingsMenu, IdToggleOpenATrustAtStartup, "启动时打开 ATrust", snapshot.OpenATrustAtStartup);
+            AppendToggleItem(settingsMenu, IdToggleOpenVpnPortalAtStartup, "启动时打开 VPN 认证页", snapshot.OpenVpnPortalAtStartup);
             AppendSubMenu(menu, settingsMenu, "偏好设置");
             AppendSeparator(menu);
             AppendActionItem(menu, IdExit, "退出程序");
@@ -477,11 +480,11 @@ public sealed class TrayIconService : IDisposable
             case IdOpenPortal:
                 CommandRequested?.Invoke(TrayMenuCommand.OpenPortal);
                 break;
-            case IdOpenATrust:
-                CommandRequested?.Invoke(TrayMenuCommand.OpenATrust);
+            case IdConnectVpn:
+                CommandRequested?.Invoke(TrayMenuCommand.ConnectVpn);
                 break;
-            case IdExitATrust:
-                CommandRequested?.Invoke(TrayMenuCommand.ExitATrust);
+            case IdConfirmVpnBrowserLogin:
+                CommandRequested?.Invoke(TrayMenuCommand.ConfirmVpnBrowserLogin);
                 break;
             case IdOpenSettingsFolder:
                 CommandRequested?.Invoke(TrayMenuCommand.OpenSettingsFolder);
@@ -498,8 +501,8 @@ public sealed class TrayIconService : IDisposable
             case IdToggleAutoConnectWifi:
                 ToggleRequested?.Invoke(TraySettingToggle.AutoConnectCampusWifi, !GetSnapshot().AutoConnectCampusWifi);
                 break;
-            case IdToggleOpenATrustAtStartup:
-                ToggleRequested?.Invoke(TraySettingToggle.OpenATrustAtStartup, !GetSnapshot().OpenATrustAtStartup);
+            case IdToggleOpenVpnPortalAtStartup:
+                ToggleRequested?.Invoke(TraySettingToggle.OpenVpnPortalAtStartup, !GetSnapshot().OpenVpnPortalAtStartup);
                 break;
             case IdExit:
                 CommandRequested?.Invoke(TrayMenuCommand.Exit);
@@ -615,24 +618,24 @@ public sealed class TrayIconService : IDisposable
         return address == 0 ? null : Marshal.GetDelegateForFunctionPointer<TDelegate>(address);
     }
 
-    private readonly record struct MonitorSnapshot(
+    internal readonly record struct MonitorSnapshot(
         string Headline,
         string Detail,
         string InternetState,
         string CampusState,
         string PreferredNetwork,
         string WifiState,
-        string ATrustState,
+        string VpnState,
         string LastAction,
         string NextCheck,
         string CurrentIp,
         bool IsOnline,
-        bool IsATrustInstalled,
-        bool IsATrustConnected,
+        bool IsVpnInstalled,
+        bool IsVpnConnected,
         bool LaunchAtStartup,
         bool PreferEthernet,
         bool AutoConnectCampusWifi,
-        bool OpenATrustAtStartup)
+        bool OpenVpnPortalAtStartup)
     {
         public string Tooltip => string.IsNullOrWhiteSpace(CurrentIp)
             ? Headline
@@ -659,8 +662,7 @@ public sealed class TrayIconService : IDisposable
 
         public static MonitorSnapshot From(
             Models.MonitorState state,
-            Models.AppSettings? settings,
-            ATrustStatus aTrustStatus)
+            Models.AppSettings? settings)
         {
             return new MonitorSnapshot(
                 state.Headline,
@@ -669,17 +671,17 @@ public sealed class TrayIconService : IDisposable
                 state.CampusState,
                 state.PreferredNetwork,
                 state.WifiState,
-                aTrustStatus.DisplayText,
+                state.VpnState,
                 state.LastAction,
                 state.NextCheck,
                 state.CurrentIp,
                 state.IsInternetAvailable || state.IsCampusLoggedIn,
-                aTrustStatus.IsInstalled,
-                aTrustStatus.IsConnected,
+                state.IsVpnInstalled,
+                state.IsVpnConnected,
                 settings?.LaunchAtStartup ?? Default.LaunchAtStartup,
                 settings?.PreferEthernet ?? Default.PreferEthernet,
                 settings?.AutoConnectCampusWifi ?? Default.AutoConnectCampusWifi,
-                settings?.OpenATrustAtStartup ?? Default.OpenATrustAtStartup);
+                settings?.OpenVpnPortalAtStartup ?? Default.OpenVpnPortalAtStartup);
         }
     }
 

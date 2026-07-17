@@ -25,7 +25,6 @@ public sealed class MonitorCoordinator : IDisposable
     private readonly InternetProbeService _internetProbeService;
     private readonly CampusPortalService _campusPortalService;
     private readonly WifiService _wifiService;
-    private readonly ATrustClientService _aTrustClientService;
     private readonly FileLogger _logger;
     private readonly SemaphoreSlim _cycleGate = new(1, 1);
     private readonly object _scheduleLock = new();
@@ -35,7 +34,6 @@ public sealed class MonitorCoordinator : IDisposable
     private PeriodicTimer? _periodicTimer;
     private int _failureCount;
     private AppSettings _settings;
-    private ATrustStatus _aTrustStatus = ATrustStatus.NotDetected;
 
     public MonitorCoordinator(
         AppSettings settings,
@@ -43,7 +41,6 @@ public sealed class MonitorCoordinator : IDisposable
         InternetProbeService internetProbeService,
         CampusPortalService campusPortalService,
         WifiService wifiService,
-        ATrustClientService aTrustClientService,
         FileLogger logger)
     {
         _settings = settings;
@@ -51,7 +48,6 @@ public sealed class MonitorCoordinator : IDisposable
         _internetProbeService = internetProbeService;
         _campusPortalService = campusPortalService;
         _wifiService = wifiService;
-        _aTrustClientService = aTrustClientService;
         _logger = logger;
     }
 
@@ -177,12 +173,7 @@ public sealed class MonitorCoordinator : IDisposable
                 NextCheck = "即将更新结果"
             });
 
-            var snapshotTask = _networkEnvironmentService.CaptureAsync(_settings, cancellationToken);
-            var aTrustStatusTask = _aTrustClientService.GetStatusAsync(cancellationToken);
-            await Task.WhenAll(snapshotTask, aTrustStatusTask);
-            var snapshot = await snapshotTask;
-            _aTrustStatus = await aTrustStatusTask;
-            _logger.Info($"ATrust VPN 状态：{_aTrustStatus.DisplayText}。");
+            var snapshot = await _networkEnvironmentService.CaptureAsync(_settings, cancellationToken);
             var campusCandidates = await GetCampusCandidatesAsync(snapshot, cancellationToken);
 
             foreach (var candidate in campusCandidates)
@@ -606,12 +597,7 @@ public sealed class MonitorCoordinator : IDisposable
 
     private void Publish(MonitorState state)
     {
-        StateChanged?.Invoke(this, state with
-        {
-            ATrustState = _aTrustStatus.DisplayText,
-            IsATrustInstalled = _aTrustStatus.IsInstalled,
-            IsATrustConnected = _aTrustStatus.IsConnected
-        });
+        StateChanged?.Invoke(this, state);
     }
 
     private static string DescribePreferred(NetworkCandidate? candidate)

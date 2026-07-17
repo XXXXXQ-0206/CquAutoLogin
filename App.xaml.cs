@@ -27,7 +27,7 @@ public partial class App : System.Windows.Application
     private FileLogger? _logger;
     private SettingsService? _settingsService;
     private AutoStartService? _autoStartService;
-    private ATrustClientService? _aTrustClientService;
+    private CquVpnCoreClient? _cquVpnCoreClient;
     private AppSettings? _settings;
     private MonitorState _currentTrayState = CreateInitialState();
     private bool _forceShutdown;
@@ -107,7 +107,11 @@ public partial class App : System.Windows.Application
 
         var processRunner = new ProcessRunner();
         var wifiService = new WifiService(processRunner);
-        _aTrustClientService = new ATrustClientService(processRunner);
+        var vpnPipeName = $"CquVpnCore.{Environment.ProcessId}";
+        var vpnCorePath = Path.Combine(AppContext.BaseDirectory, "CquVpnCore.exe");
+        _cquVpnCoreClient = new CquVpnCoreClient(
+            new ProcessCquVpnCoreHost(vpnCorePath, vpnPipeName, Environment.ProcessId),
+            new NamedPipeCquVpnCoreCommandClient(vpnPipeName));
         var networkEnvironmentService = new NetworkEnvironmentService(wifiService);
         var internetProbeService = new InternetProbeService();
         var campusPortalService = new CampusPortalService();
@@ -117,7 +121,6 @@ public partial class App : System.Windows.Application
             internetProbeService,
             campusPortalService,
             wifiService,
-            _aTrustClientService,
             _logger);
         LogInfo("Background services created.");
 
@@ -140,7 +143,7 @@ public partial class App : System.Windows.Application
         _trayIconService.CommandRequested += OnTrayCommandRequested;
         _trayIconService.ToggleRequested += OnTrayToggleRequested;
         _trayIconService.Update(_currentTrayState, _settings);
-        await RefreshATrustStatusAsync();
+        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus());
         LogInfo("Native tray icon created.");
 
         _monitorCoordinator.StateChanged += (_, state) =>
@@ -157,9 +160,9 @@ public partial class App : System.Windows.Application
         _monitorCoordinator.Start();
         LogInfo("Monitoring started.");
 
-        if (_settings.OpenATrustAtStartup)
+        if (_settings.OpenVpnPortalAtStartup)
         {
-            await OpenATrustAsync(showError: false);
+            await ConnectVpnAsync(showError: false);
         }
 
         if (!silent)
@@ -205,12 +208,12 @@ public partial class App : System.Windows.Application
                     OpenPortal();
                     break;
 
-                case TrayMenuCommand.OpenATrust:
-                    await OpenATrustAsync(showError: true);
+                case TrayMenuCommand.ConnectVpn:
+                    await ConnectVpnAsync(showError: true);
                     break;
 
-                case TrayMenuCommand.ExitATrust:
-                    await ExitATrustAsync();
+                case TrayMenuCommand.ConfirmVpnBrowserLogin:
+                    await ConfirmVpnBrowserLoginAsync(showError: true);
                     break;
 
                 case TrayMenuCommand.OpenSettingsFolder:
@@ -254,8 +257,8 @@ public partial class App : System.Windows.Application
                 _settings.AutoConnectCampusWifi = enabled;
                 break;
 
-            case TraySettingToggle.OpenATrustAtStartup:
-                _settings.OpenATrustAtStartup = enabled;
+            case TraySettingToggle.OpenVpnPortalAtStartup:
+                _settings.OpenVpnPortalAtStartup = enabled;
                 break;
 
             default:
@@ -312,65 +315,59 @@ public partial class App : System.Windows.Application
         });
     }
 
-    private async Task OpenATrustAsync(bool showError)
+    private async Task ConnectVpnAsync(bool showError)
     {
-        if (_aTrustClientService is null)
+        if (_cquVpnCoreClient is null)
         {
             return;
         }
 
-        var result = _aTrustClientService.OpenInteractive();
-        if (!result.Success)
+        try
         {
+            var status = await _cquVpnCoreClient.BeginBrowserLoginAsync(CancellationToken.None);
+            ApplyVpnStatus(status);
+            _logger?.Info($"CquVpnCore: {status.Detail}");
+        }
+        catch (Exception exception)
+        {
+            _logger?.Error(exception, "CquVpnCore could not start browser login.");
+            _trayIconService?.UpdateVpnStatus(new CquVpnDisplayStatus(
+                "CquVpnCore 启动失败",
+                IsCoreRunning: false,
+                IsConnected: false));
             if (showError)
             {
-                ShowNonFatalMessage(result.Message);
+                ShowNonFatalMessage("CquVpnCore 未能启动或响应。请检查应用目录中是否存在 CquVpnCore.exe。");
             }
-            return;
         }
-
-        _logger?.Info(result.Message);
-        await RefreshATrustStatusAsync();
     }
 
-    private async Task ExitATrustAsync()
+    private async Task ConfirmVpnBrowserLoginAsync(bool showError)
     {
-        if (_aTrustClientService is null)
+        if (_cquVpnCoreClient is null)
         {
             return;
         }
 
-        var confirmation = System.Windows.MessageBox.Show(
-            "这会调用 ATrust 官方工具完整退出客户端并断开 VPN。继续吗？",
-            "关闭 ATrust VPN",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (confirmation != MessageBoxResult.Yes)
+        try
         {
-            return;
+            var status = await _cquVpnCoreClient.ConfirmBrowserLoginAsync(CancellationToken.None);
+            ApplyVpnStatus(status);
+            _logger?.Info($"CquVpnCore: {status.Detail}");
         }
-
-        var result = _aTrustClientService.ExitClient();
-        if (!result.Success)
+        catch (Exception exception)
         {
-            ShowNonFatalMessage(result.Message);
-            return;
+            _logger?.Error(exception, "CquVpnCore could not confirm browser login.");
+            if (showError)
+            {
+                ShowNonFatalMessage("CquVpnCore 当前不在等待浏览器认证状态。请先选择“连接并打开认证页”。");
+            }
         }
-
-        _logger?.Info(result.Message);
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        await RefreshATrustStatusAsync();
     }
 
-    private async Task RefreshATrustStatusAsync()
+    private void ApplyVpnStatus(CquVpnCore.Contracts.VpnCoreStatus status)
     {
-        if (_aTrustClientService is null)
-        {
-            return;
-        }
-
-        var status = await _aTrustClientService.GetStatusAsync(CancellationToken.None);
-        _trayIconService?.UpdateATrustStatus(status);
+        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(status));
     }
 
     private bool TryBecomeSingleInstance()
@@ -577,7 +574,7 @@ public partial class App : System.Windows.Application
             CampusState = "未知",
             PreferredNetwork = "未选择",
             WifiState = "未知",
-            ATrustState = "正在检测",
+            VpnState = "正在检测",
             LastAction = "尚无动作",
             NextCheck = "网络事件触发 + 5 分钟兜底"
         };

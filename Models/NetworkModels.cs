@@ -103,7 +103,7 @@ public sealed record MonitorState
 
     public string WifiState { get; init; } = "未知";
 
-    public string ATrustState { get; init; } = "未检测";
+    public string VpnState { get; init; } = "未检测";
 
     public string LastAction { get; init; } = "尚无动作";
 
@@ -115,7 +115,7 @@ public sealed record MonitorState
 
     public bool IsCampusLoggedIn { get; init; }
 
-    public bool IsATrustInstalled { get; init; }
+    public bool IsVpnInstalled { get; init; }
 
-    public bool IsATrustConnected { get; init; }
+    public bool IsVpnConnected { get; init; }
 }

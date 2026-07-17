@@ -1,3 +1,12 @@
+# Unreleased
+
+## CquVpnCore C0/C1 experimental boundary
+
+- VPN tray actions now start the bundled `CquVpnCore.exe`, not an official VPN process, service, Agent, or Tray.
+- The core opens the browser authentication portal and accepts an explicit user confirmation through local IPC.
+- The core deliberately does not establish a tunnel, read browser authentication data, change network configuration, or support uninstalling the official client.
+- This is not a VPN-capable release and must not be described as connected, compatible with generic VPN clients, or ready to replace the official client.
+
 # CquAutoLogin v0.1.0
 
 Initial public release.
