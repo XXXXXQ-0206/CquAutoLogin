@@ -11,6 +11,7 @@ namespace CquAutoLogin.Services;
 public sealed class CampusPortalService
 {
     private const string JsVersion = "4.2.1";
+    private static readonly TimeSpan PortalProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly Regex JsonpRegex = new(@"^[^(]+\((.*)\)\s*;?$", RegexOptions.Singleline | RegexOptions.Compiled);
     private readonly HttpClient _httpClient;
 
@@ -30,9 +31,11 @@ public sealed class CampusPortalService
         try
         {
             var portalUri = BuildEndpointUri(settings, "eportal/");
+            using var probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            probeCancellation.CancelAfter(PortalProbeTimeout);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, portalUri);
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, probeCancellation.Token);
             if (!response.IsSuccessStatusCode)
             {
                 return false;
@@ -46,7 +49,7 @@ public sealed class CampusPortalService
                 return false;
             }
 
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(probeCancellation.Token);
             return body.Contains("Dr.COM", StringComparison.OrdinalIgnoreCase) ||
                    body.Contains("注销页", StringComparison.OrdinalIgnoreCase) ||
                    body.Contains("统一认证", StringComparison.OrdinalIgnoreCase) ||
