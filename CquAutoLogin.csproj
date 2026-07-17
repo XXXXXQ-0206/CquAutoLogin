@@ -11,6 +11,11 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);CquAutoLogin.Tests\**;CquVpnCore.Contracts\**;CquVpnCore.Tests\**;CquVpnCore\**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="Assets\Shiroko.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

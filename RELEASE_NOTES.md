@@ -6,6 +6,7 @@
 - The core opens the browser authentication portal and can receive an automatic visible-state report through the optional browser bridge.
 - The browser bridge reports only `unknown`, `auth-required`, or `authenticated`; it does not read browser credentials or session storage.
 - The core deliberately does not establish a tunnel, read browser authentication data, change network configuration, or support uninstalling the official client.
+- Release builds omit PDB debug symbols so published executables do not expose local source paths.
 - This is not a VPN-capable release and must not be described as connected, compatible with generic VPN clients, or ready to replace the official client.
 
 # CquAutoLogin v0.1.0
