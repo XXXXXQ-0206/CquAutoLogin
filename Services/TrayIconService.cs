@@ -248,7 +248,7 @@ public sealed class TrayIconService : IDisposable
 
             AppendInfoItem(vpnMenu, 2201, $"状态：{snapshot.VpnState}");
             AppendActionItem(vpnMenu, IdConnectVpn, "连接并打开认证页");
-            AppendActionItem(vpnMenu, IdOpenBrowserBridgeFolder, "打开浏览器桥接目录");
+            AppendActionItem(vpnMenu, IdOpenBrowserBridgeFolder, "设置浏览器桥接");
             AppendSubMenu(menu, vpnMenu, "校园 VPN");
             AppendSeparator(menu);
 

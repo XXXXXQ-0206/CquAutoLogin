@@ -11,10 +11,12 @@
 ## 一次性安装扩展
 
 1. 启动 CquAutoLogin，使它把 `CquVpnCore.exe` 注册为当前用户的 Native Messaging 主机。
-2. 在 Chrome 或 Edge 打开扩展管理页并启用开发者模式。
-3. 选择“加载已解压的扩展”，目录选择安装目录下的 `Assets\BrowserBridge`。
+2. 从托盘菜单选择“校园 VPN”中的“设置浏览器桥接”。CquAutoLogin 会同时打开当前安装目录下的 `Assets\BrowserBridge` 和 Chrome 扩展管理页；如果 Chrome 的 URI 无法打开，则会尝试 Edge 扩展管理页。
+3. 在浏览器扩展管理页启用开发者模式，并选择“加载已解压的扩展”，目录选择已经打开的 `Assets\BrowserBridge`。
 4. 保持扩展启用。扩展加载或浏览器启动后会自动回执；以后打开认证页或认证状态发生变化时，状态会自动上报。
 
 如果之前从其他安装目录加载过扩展，请在扩展管理页重新加载，或重新选择当前安装目录下的 `Assets\BrowserBridge`；这只在升级扩展时需要一次，不是每次认证都要执行的操作。
+
+Windows 版 Chrome 不允许应用从本地 CRX 静默外部安装扩展。CquAutoLogin 不会写入强制安装策略或读取浏览器配置来绕过这一步；未来如发布 Chrome Web Store 版本，浏览器仍会在首次启用时要求用户确认。
 
 这一桥接只表示浏览器认证状态，不表示 VPN 隧道已经建立；当前 `CquVpnCore` 仍处于 C0/C1 阶段。

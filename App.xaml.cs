@@ -335,17 +335,18 @@ public partial class App : System.Windows.Application
     private static void OpenBrowserBridgeFolder()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "Assets", "BrowserBridge");
-        if (!Directory.Exists(directory))
+        try
+        {
+            new BrowserBridgeSetupLauncher().Open(directory);
+        }
+        catch (DirectoryNotFoundException)
         {
             ShowNonFatalMessage("未找到浏览器桥接文件。请重新安装 CquAutoLogin。");
-            return;
         }
-
-        Process.Start(new ProcessStartInfo
+        catch (Exception exception)
         {
-            FileName = directory,
-            UseShellExecute = true
-        });
+            ShowNonFatalMessage($"无法打开浏览器桥接设置：{exception.Message}");
+        }
     }
 
     private async Task ConnectVpnAsync(bool showError)
