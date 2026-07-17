@@ -18,5 +18,7 @@ public sealed class AppSettings
 
     public bool AutoConnectCampusWifi { get; set; } = true;
 
+    public bool OpenATrustAtStartup { get; set; }
+
     public int HealthyCheckMinutes { get; set; } = 5;
 }

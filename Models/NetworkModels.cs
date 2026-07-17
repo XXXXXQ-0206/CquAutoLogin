@@ -89,7 +89,7 @@ public sealed class PortalLoginResult
     public int RetCode { get; init; }
 }
 
-public sealed class MonitorState
+public sealed record MonitorState
 {
     public string Headline { get; init; } = "待命中";
 
@@ -103,6 +103,8 @@ public sealed class MonitorState
 
     public string WifiState { get; init; } = "未知";
 
+    public string ATrustState { get; init; } = "未检测";
+
     public string LastAction { get; init; } = "尚无动作";
 
     public string NextCheck { get; init; } = "网络事件触发 + 5 分钟兜底";
@@ -112,4 +114,8 @@ public sealed class MonitorState
     public bool IsInternetAvailable { get; init; }
 
     public bool IsCampusLoggedIn { get; init; }
+
+    public bool IsATrustInstalled { get; init; }
+
+    public bool IsATrustConnected { get; init; }
 }
