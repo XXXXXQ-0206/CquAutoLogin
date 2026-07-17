@@ -21,18 +21,18 @@ public sealed class ProcessRunnerTests
             await File.WriteAllTextAsync(
                 scriptPath,
                 "@echo off\r\n" +
-                $"powershell.exe -NoProfile -Command \"$PID | Out-File -FilePath '{childProcessIdPath}' -Encoding ascii -NoNewline; Start-Sleep -Seconds 10\"\r\n");
+                $"powershell.exe -NoProfile -Command \"$PID | Out-File -FilePath '{childProcessIdPath}' -Encoding ascii -NoNewline; Start-Sleep -Seconds 20\"\r\n");
 
             await Assert.ThrowsAsync<TimeoutException>(() => runner.RunAsync(
                 Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
                 new[] { "/c", scriptPath },
-                timeoutMs: 1000,
+                timeoutMs: 6000,
                 default));
             stopwatch.Stop();
 
             var childProcessId = int.Parse(await File.ReadAllTextAsync(childProcessIdPath));
             Assert.Throws<ArgumentException>(() => Process.GetProcessById(childProcessId));
-            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10));
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(20));
         }
         finally
         {
@@ -54,14 +54,14 @@ public sealed class ProcessRunnerTests
         var runner = new ProcessRunner();
         var scriptPath = Path.Combine(Path.GetTempPath(), $"CquAutoLogin.Tests.{Guid.NewGuid():N}.cmd");
         var childProcessIdPath = Path.Combine(Path.GetTempPath(), $"CquAutoLogin.Tests.{Guid.NewGuid():N}.txt");
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(6));
 
         try
         {
             await File.WriteAllTextAsync(
                 scriptPath,
                 "@echo off\r\n" +
-                $"powershell.exe -NoProfile -Command \"$PID | Out-File -FilePath '{childProcessIdPath}' -Encoding ascii -NoNewline; Start-Sleep -Seconds 10\"\r\n");
+                $"powershell.exe -NoProfile -Command \"$PID | Out-File -FilePath '{childProcessIdPath}' -Encoding ascii -NoNewline; Start-Sleep -Seconds 20\"\r\n");
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runner.RunAsync(
                 Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",

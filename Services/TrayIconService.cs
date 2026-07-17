@@ -8,6 +8,7 @@ public enum TrayMenuCommand
     RunCheck,
     OpenPortal,
     ConnectVpn,
+    OpenBrowserBridgeFolder,
     OpenSettingsFolder,
     ReloadSettings,
     Exit
@@ -56,6 +57,7 @@ public sealed class TrayIconService : IDisposable
     private const int IdOpenSettingsFolder = 1003;
     private const int IdReloadSettings = 1004;
     private const int IdConnectVpn = 1005;
+    private const int IdOpenBrowserBridgeFolder = 1006;
     private const int IdToggleLaunchAtStartup = 1101;
     private const int IdTogglePreferEthernet = 1102;
     private const int IdToggleAutoConnectWifi = 1103;
@@ -246,6 +248,7 @@ public sealed class TrayIconService : IDisposable
 
             AppendInfoItem(vpnMenu, 2201, $"状态：{snapshot.VpnState}");
             AppendActionItem(vpnMenu, IdConnectVpn, "连接并打开认证页");
+            AppendActionItem(vpnMenu, IdOpenBrowserBridgeFolder, "打开浏览器桥接目录");
             AppendSubMenu(menu, vpnMenu, "校园 VPN");
             AppendSeparator(menu);
 
@@ -479,6 +482,9 @@ public sealed class TrayIconService : IDisposable
                 break;
             case IdConnectVpn:
                 CommandRequested?.Invoke(TrayMenuCommand.ConnectVpn);
+                break;
+            case IdOpenBrowserBridgeFolder:
+                CommandRequested?.Invoke(TrayMenuCommand.OpenBrowserBridgeFolder);
                 break;
             case IdOpenSettingsFolder:
                 CommandRequested?.Invoke(TrayMenuCommand.OpenSettingsFolder);

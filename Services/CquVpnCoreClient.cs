@@ -67,7 +67,10 @@ public sealed class CquVpnCoreClient
 
     public static CquVpnDisplayStatus GetStoppedDisplayStatus()
     {
-        return new CquVpnDisplayStatus("CquVpnCore 未启动", IsCoreRunning: false, IsConnected: false);
+        return new CquVpnDisplayStatus(
+            "尚未收到浏览器桥接报告（CquVpnCore 未启动）",
+            IsCoreRunning: false,
+            IsConnected: false);
     }
 
     public static CquVpnDisplayStatus ToDisplayStatus(VpnCoreStatus status)

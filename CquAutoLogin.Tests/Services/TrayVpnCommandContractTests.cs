@@ -9,6 +9,7 @@ public sealed class TrayVpnCommandContractTests
     public void Tray_command_contract_uses_vendor_neutral_vpn_identifiers()
     {
         Assert.True(Enum.IsDefined(TrayMenuCommand.ConnectVpn));
+        Assert.True(Enum.IsDefined(TrayMenuCommand.OpenBrowserBridgeFolder));
         Assert.True(Enum.IsDefined(TraySettingToggle.OpenVpnPortalAtStartup));
         Assert.False(Enum.TryParse<TrayMenuCommand>("ConfirmVpnBrowserLogin", out _));
         Assert.False(Enum.TryParse<TrayMenuCommand>("OpenATrust", out _));
