@@ -47,6 +47,29 @@ public sealed class BrowserAuthSignalStoreTests
         }
     }
 
+    [Fact]
+    public async Task Bridge_ready_report_is_read_as_non_authentication_state()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 7, 18, 0, 0, 0, TimeSpan.Zero));
+            var store = new BrowserAuthSignalStore(directory, timeProvider);
+
+            await store.WriteBridgeReadyAsync(CancellationToken.None);
+            var signal = store.ReadRecent(TimeSpan.FromSeconds(10));
+
+            Assert.NotNull(signal);
+            Assert.Equal(BrowserBridgeReportKind.BridgeReady, signal.Kind);
+            Assert.Equal(BrowserAuthState.Unknown, signal.State);
+            Assert.NotEqual(BrowserAuthState.Authenticated, signal.State);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"CquVpnCore.Tests.{Guid.NewGuid():N}");

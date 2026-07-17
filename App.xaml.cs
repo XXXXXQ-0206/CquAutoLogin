@@ -33,6 +33,7 @@ public partial class App : System.Windows.Application
     private AppSettings? _settings;
     private MonitorState _currentTrayState = CreateInitialState();
     private volatile bool _browserAuthObservationActive;
+    private bool _browserBridgeReady;
     private bool _forceShutdown;
 
     public App()
@@ -159,7 +160,7 @@ public partial class App : System.Windows.Application
         _trayIconService.CommandRequested += OnTrayCommandRequested;
         _trayIconService.ToggleRequested += OnTrayToggleRequested;
         _trayIconService.Update(_currentTrayState, _settings);
-        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus());
+        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(_browserBridgeReady));
         LogInfo("Native tray icon created.");
 
         _monitorCoordinator.StateChanged += (_, state) =>
@@ -382,6 +383,19 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (signal.Kind == BrowserBridgeReportKind.BridgeReady)
+        {
+            _browserBridgeReady = true;
+            if (!_browserAuthObservationActive)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                    _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(_browserBridgeReady)));
+            }
+
+            _logger?.Info("Browser bridge sent a readiness report.");
+            return;
+        }
+
         if (!_browserAuthObservationActive && signal.State != BrowserAuthState.Authenticated)
         {
             return;
@@ -404,7 +418,7 @@ public partial class App : System.Windows.Application
 
     private void ApplyVpnStatus(CquVpnCore.Contracts.VpnCoreStatus status)
     {
-        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(status));
+        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(status, _browserBridgeReady));
     }
 
     private bool TryBecomeSingleInstance()

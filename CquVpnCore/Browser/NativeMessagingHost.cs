@@ -15,6 +15,18 @@ public static class NativeMessagingHost
     {
         await using var input = Console.OpenStandardInput();
         await using var output = Console.OpenStandardOutput();
+        return await RunAsync(input, output, new BrowserAuthSignalStore(), cancellationToken);
+    }
+
+    public static async Task<int> RunAsync(
+        Stream input,
+        Stream output,
+        BrowserAuthSignalStore signalStore,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(signalStore);
         var lengthBuffer = new byte[sizeof(int)];
 
         while (!cancellationToken.IsCancellationRequested)
@@ -40,12 +52,15 @@ public static class NativeMessagingHost
             try
             {
                 if (!await ReadExactlyAsync(input, payload.AsMemory(0, messageLength), cancellationToken) ||
-                    !TryParseBrowserAuthState(payload.AsSpan(0, messageLength), out var state))
+                    !TryParseBrowserBridgeReport(
+                        payload.AsSpan(0, messageLength),
+                        out var reportKind,
+                        out var state))
                 {
                     return 2;
                 }
 
-                var result = await ForwardSignalAsync(state, cancellationToken);
+                var result = await ForwardSignalAsync(signalStore, reportKind, state, cancellationToken);
                 await WriteResponseAsync(output, result, cancellationToken);
             }
             finally
@@ -76,22 +91,33 @@ public static class NativeMessagingHost
         return true;
     }
 
-    private static bool TryParseBrowserAuthState(ReadOnlySpan<byte> payload, out BrowserAuthState state)
+    private static bool TryParseBrowserBridgeReport(
+        ReadOnlySpan<byte> payload,
+        out BrowserBridgeReportKind reportKind,
+        out BrowserAuthState state)
     {
+        reportKind = BrowserBridgeReportKind.PortalState;
         state = BrowserAuthState.Unknown;
         try
         {
             using var document = JsonDocument.Parse(payload.ToArray());
             var root = document.RootElement;
-            if (!root.TryGetProperty("type", out var type) ||
-                !string.Equals(type.GetString(), "browser-auth-state", StringComparison.Ordinal) ||
-                !root.TryGetProperty("state", out var stateValue) ||
-                !Enum.TryParse(stateValue.GetString(), ignoreCase: true, out state))
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("type", out var type))
             {
                 return false;
             }
 
-            return Enum.IsDefined(state);
+            if (string.Equals(type.GetString(), "browser-bridge-ready", StringComparison.Ordinal))
+            {
+                reportKind = BrowserBridgeReportKind.BridgeReady;
+                return true;
+            }
+
+            return string.Equals(type.GetString(), "browser-auth-state", StringComparison.Ordinal) &&
+                   root.TryGetProperty("state", out var stateValue) &&
+                   Enum.TryParse(stateValue.GetString(), ignoreCase: true, out state) &&
+                   Enum.IsDefined(state);
         }
         catch (JsonException)
         {
@@ -100,12 +126,22 @@ public static class NativeMessagingHost
     }
 
     private static async Task<ForwardResult> ForwardSignalAsync(
+        BrowserAuthSignalStore signalStore,
+        BrowserBridgeReportKind reportKind,
         BrowserAuthState state,
         CancellationToken cancellationToken)
     {
         try
         {
-            await new BrowserAuthSignalStore().WriteAsync(state, cancellationToken);
+            if (reportKind == BrowserBridgeReportKind.BridgeReady)
+            {
+                await signalStore.WriteBridgeReadyAsync(cancellationToken);
+            }
+            else
+            {
+                await signalStore.WriteAsync(state, cancellationToken);
+            }
+
             return ForwardResult.Accepted;
         }
         catch (TimeoutException)

@@ -20,6 +20,29 @@ function ensureNativePort() {
   return nativePort;
 }
 
+function postToNative(message) {
+  const port = ensureNativePort();
+  if (port === null) {
+    return false;
+  }
+
+  try {
+    port.postMessage(message);
+    return true;
+  } catch {
+    nativePort = null;
+    return false;
+  }
+}
+
+function reportBridgeReady() {
+  postToNative({ type: "browser-bridge-ready" });
+}
+
+chrome.runtime.onInstalled.addListener(reportBridgeReady);
+chrome.runtime.onStartup.addListener(reportBridgeReady);
+reportBridgeReady();
+
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (!sender.tab?.url || typeof message?.state !== "string" || !validStates.has(message.state)) {
     return;
@@ -33,17 +56,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     return;
   }
 
-  const port = ensureNativePort();
-  if (port === null) {
-    return;
-  }
-
-  try {
-    port.postMessage({
-      type: "browser-auth-state",
-      state: message.state
-    });
-  } catch {
-    nativePort = null;
-  }
+  postToNative({
+    type: "browser-auth-state",
+    state: message.state
+  });
 });

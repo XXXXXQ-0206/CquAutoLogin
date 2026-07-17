@@ -9,9 +9,16 @@ public enum BrowserAuthState
     Authenticated
 }
 
+public enum BrowserBridgeReportKind
+{
+    PortalState,
+    BridgeReady
+}
+
 public sealed record BrowserAuthSignal(
     BrowserAuthState State,
-    DateTimeOffset ReportedAtUtc = default);
+    DateTimeOffset ReportedAtUtc = default,
+    BrowserBridgeReportKind Kind = BrowserBridgeReportKind.PortalState);
 
 public sealed class BrowserAuthSignalStore
 {
@@ -32,18 +39,31 @@ public sealed class BrowserAuthSignalStore
 
     public string StatePath => Path.Combine(DirectoryPath, StateFileName);
 
-    public async Task WriteAsync(BrowserAuthState state, CancellationToken cancellationToken)
+    public Task WriteAsync(BrowserAuthState state, CancellationToken cancellationToken)
     {
-        if (!Enum.IsDefined(state))
+        return WriteAsync(state, BrowserBridgeReportKind.PortalState, cancellationToken);
+    }
+
+    public Task WriteBridgeReadyAsync(CancellationToken cancellationToken)
+    {
+        return WriteAsync(BrowserAuthState.Unknown, BrowserBridgeReportKind.BridgeReady, cancellationToken);
+    }
+
+    private async Task WriteAsync(
+        BrowserAuthState state,
+        BrowserBridgeReportKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.IsDefined(state) || !Enum.IsDefined(kind))
         {
-            throw new ArgumentOutOfRangeException(nameof(state));
+            throw new ArgumentOutOfRangeException();
         }
 
         Directory.CreateDirectory(DirectoryPath);
         var temporaryPath = Path.Combine(DirectoryPath, $".{StateFileName}.{Guid.NewGuid():N}.tmp");
         try
         {
-            var signal = new BrowserAuthSignal(state, _timeProvider.GetUtcNow());
+            var signal = new BrowserAuthSignal(state, _timeProvider.GetUtcNow(), kind);
             await File.WriteAllTextAsync(
                 temporaryPath,
                 JsonSerializer.Serialize(signal, SerializerOptions),
@@ -71,7 +91,7 @@ public sealed class BrowserAuthSignalStore
             var signal = JsonSerializer.Deserialize<BrowserAuthSignal>(
                 File.ReadAllText(StatePath),
                 SerializerOptions);
-            if (signal is null || !Enum.IsDefined(signal.State))
+            if (signal is null || !Enum.IsDefined(signal.State) || !Enum.IsDefined(signal.Kind))
             {
                 return null;
             }

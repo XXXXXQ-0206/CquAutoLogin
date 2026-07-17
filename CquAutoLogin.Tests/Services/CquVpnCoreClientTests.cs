@@ -63,6 +63,17 @@ public sealed class CquVpnCoreClientTests
     }
 
     [Fact]
+    public void Display_status_for_recent_bridge_report_does_not_claim_a_tunnel()
+    {
+        var display = CquVpnCoreClient.GetStoppedDisplayStatus(browserBridgeReady: true);
+
+        Assert.Equal("浏览器桥接已回执（等待认证页）", display.Text);
+        Assert.False(display.IsCoreRunning);
+        Assert.False(display.IsConnected);
+        Assert.DoesNotContain("VPN 已连接", display.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_project_config_publishes_the_core_to_the_same_directory()
     {
         var projectPath = FindProjectPath();
