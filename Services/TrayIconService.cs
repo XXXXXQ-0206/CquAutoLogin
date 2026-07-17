@@ -7,6 +7,8 @@ public enum TrayMenuCommand
 {
     RunCheck,
     OpenPortal,
+    OpenATrust,
+    ExitATrust,
     OpenSettingsFolder,
     ReloadSettings,
     Exit
@@ -16,7 +18,8 @@ public enum TraySettingToggle
 {
     LaunchAtStartup,
     PreferEthernet,
-    AutoConnectCampusWifi
+    AutoConnectCampusWifi,
+    OpenATrustAtStartup
 }
 
 public sealed class TrayIconService : IDisposable
@@ -53,9 +56,12 @@ public sealed class TrayIconService : IDisposable
     private const int IdOpenPortal = 1002;
     private const int IdOpenSettingsFolder = 1003;
     private const int IdReloadSettings = 1004;
+    private const int IdOpenATrust = 1005;
+    private const int IdExitATrust = 1006;
     private const int IdToggleLaunchAtStartup = 1101;
     private const int IdTogglePreferEthernet = 1102;
     private const int IdToggleAutoConnectWifi = 1103;
+    private const int IdToggleOpenATrustAtStartup = 1104;
     private const int IdExit = 1999;
 
     private readonly string _windowClassName = $"CquAutoLogin.TrayWindow.{Guid.NewGuid():N}";
@@ -70,6 +76,7 @@ public sealed class TrayIconService : IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly object _stateLock = new();
     private MonitorSnapshot _snapshot = MonitorSnapshot.Default;
+    private ATrustStatus _aTrustStatus = ATrustStatus.NotDetected;
 
     public TrayIconService(string iconPath)
     {
@@ -100,7 +107,7 @@ public sealed class TrayIconService : IDisposable
 
     public void Update(Models.MonitorState state, Models.AppSettings? settings)
     {
-        var snapshot = MonitorSnapshot.From(state, settings);
+        var snapshot = MonitorSnapshot.From(state, settings, _aTrustStatus);
         lock (_stateLock)
         {
             _snapshot = snapshot;
@@ -108,6 +115,20 @@ public sealed class TrayIconService : IDisposable
 
         var icon = snapshot.IsOnline ? _onlineIcon : _offlineIcon;
         ModifyTrayIcon(icon, snapshot.Tooltip);
+    }
+
+    public void UpdateATrustStatus(ATrustStatus status)
+    {
+        lock (_stateLock)
+        {
+            _aTrustStatus = status;
+            _snapshot = _snapshot with
+            {
+                ATrustState = status.DisplayText,
+                IsATrustInstalled = status.IsInstalled,
+                IsATrustConnected = status.IsConnected
+            };
+        }
     }
 
     public void ShowContextMenuAtCursor()
@@ -205,12 +226,27 @@ public sealed class TrayIconService : IDisposable
             AppendInfoItem(statusMenu, 2103, $"校园网：{snapshot.CampusState}");
             AppendInfoItem(statusMenu, 2104, $"首选网络：{snapshot.PreferredNetwork}");
             AppendInfoItem(statusMenu, 2105, $"Wi‑Fi：{snapshot.WifiState}");
-            AppendInfoItem(statusMenu, 2106, $"上次动作：{snapshot.LastAction}");
-            AppendInfoItem(statusMenu, 2107, $"下次检查：{snapshot.NextCheck}");
+            AppendInfoItem(statusMenu, 2106, $"ATrust VPN：{snapshot.ATrustState}");
+            AppendInfoItem(statusMenu, 2107, $"上次动作：{snapshot.LastAction}");
+            AppendInfoItem(statusMenu, 2108, $"下次检查：{snapshot.NextCheck}");
             AppendSubMenu(menu, statusMenu, "状态详情");
             AppendSeparator(menu);
             AppendActionItem(menu, IdRunCheck, "立即检测");
             AppendActionItem(menu, IdOpenPortal, "打开认证页");
+
+            var aTrustMenu = CreatePopupMenu();
+            if (aTrustMenu == 0)
+            {
+                throw new InvalidOperationException("Failed to create ATrust submenu.");
+            }
+
+            AppendInfoItem(aTrustMenu, 2201, $"状态：{snapshot.ATrustState}");
+            if (snapshot.IsATrustInstalled)
+            {
+                AppendActionItem(aTrustMenu, IdOpenATrust, "打开/连接 ATrust");
+                AppendActionItem(aTrustMenu, IdExitATrust, "关闭 ATrust（完全退出）");
+            }
+            AppendSubMenu(menu, aTrustMenu, "ATrust VPN");
             AppendSeparator(menu);
 
             var configMenu = CreatePopupMenu();
@@ -232,6 +268,7 @@ public sealed class TrayIconService : IDisposable
             AppendToggleItem(settingsMenu, IdToggleLaunchAtStartup, "开机自启", snapshot.LaunchAtStartup);
             AppendToggleItem(settingsMenu, IdTogglePreferEthernet, "优先使用以太网", snapshot.PreferEthernet);
             AppendToggleItem(settingsMenu, IdToggleAutoConnectWifi, "断网时自动连接 CQU_Wifi", snapshot.AutoConnectCampusWifi);
+            AppendToggleItem(settingsMenu, IdToggleOpenATrustAtStartup, "启动时打开 ATrust", snapshot.OpenATrustAtStartup);
             AppendSubMenu(menu, settingsMenu, "偏好设置");
             AppendSeparator(menu);
             AppendActionItem(menu, IdExit, "退出程序");
@@ -440,6 +477,12 @@ public sealed class TrayIconService : IDisposable
             case IdOpenPortal:
                 CommandRequested?.Invoke(TrayMenuCommand.OpenPortal);
                 break;
+            case IdOpenATrust:
+                CommandRequested?.Invoke(TrayMenuCommand.OpenATrust);
+                break;
+            case IdExitATrust:
+                CommandRequested?.Invoke(TrayMenuCommand.ExitATrust);
+                break;
             case IdOpenSettingsFolder:
                 CommandRequested?.Invoke(TrayMenuCommand.OpenSettingsFolder);
                 break;
@@ -454,6 +497,9 @@ public sealed class TrayIconService : IDisposable
                 break;
             case IdToggleAutoConnectWifi:
                 ToggleRequested?.Invoke(TraySettingToggle.AutoConnectCampusWifi, !GetSnapshot().AutoConnectCampusWifi);
+                break;
+            case IdToggleOpenATrustAtStartup:
+                ToggleRequested?.Invoke(TraySettingToggle.OpenATrustAtStartup, !GetSnapshot().OpenATrustAtStartup);
                 break;
             case IdExit:
                 CommandRequested?.Invoke(TrayMenuCommand.Exit);
@@ -576,13 +622,17 @@ public sealed class TrayIconService : IDisposable
         string CampusState,
         string PreferredNetwork,
         string WifiState,
+        string ATrustState,
         string LastAction,
         string NextCheck,
         string CurrentIp,
         bool IsOnline,
+        bool IsATrustInstalled,
+        bool IsATrustConnected,
         bool LaunchAtStartup,
         bool PreferEthernet,
-        bool AutoConnectCampusWifi)
+        bool AutoConnectCampusWifi,
+        bool OpenATrustAtStartup)
     {
         public string Tooltip => string.IsNullOrWhiteSpace(CurrentIp)
             ? Headline
@@ -595,15 +645,22 @@ public sealed class TrayIconService : IDisposable
             "未知",
             "未选择",
             "未知",
+            "未检测",
             "尚无动作",
             "网络事件触发 + 5 分钟兜底",
             string.Empty,
             false,
+            false,
+            false,
             true,
             true,
-            true);
+            true,
+            false);
 
-        public static MonitorSnapshot From(Models.MonitorState state, Models.AppSettings? settings)
+        public static MonitorSnapshot From(
+            Models.MonitorState state,
+            Models.AppSettings? settings,
+            ATrustStatus aTrustStatus)
         {
             return new MonitorSnapshot(
                 state.Headline,
@@ -612,13 +669,17 @@ public sealed class TrayIconService : IDisposable
                 state.CampusState,
                 state.PreferredNetwork,
                 state.WifiState,
+                aTrustStatus.DisplayText,
                 state.LastAction,
                 state.NextCheck,
                 state.CurrentIp,
                 state.IsInternetAvailable || state.IsCampusLoggedIn,
+                aTrustStatus.IsInstalled,
+                aTrustStatus.IsConnected,
                 settings?.LaunchAtStartup ?? Default.LaunchAtStartup,
                 settings?.PreferEthernet ?? Default.PreferEthernet,
-                settings?.AutoConnectCampusWifi ?? Default.AutoConnectCampusWifi);
+                settings?.AutoConnectCampusWifi ?? Default.AutoConnectCampusWifi,
+                settings?.OpenATrustAtStartup ?? Default.OpenATrustAtStartup);
         }
     }
 
