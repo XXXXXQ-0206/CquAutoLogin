@@ -16,9 +16,9 @@ It can:
 
 ## Experimental VPN Core
 
-The bundled `CquVpnCore` C0/C1 slice starts no official VPN service, Agent, or Tray. It opens the browser portal for user-operated SSO/MFA and records an explicit confirmation through local IPC.
+The bundled `CquVpnCore` C0/C1 slice starts no official VPN service, Agent, or Tray. It opens the browser portal for user-operated SSO/MFA and can automatically detect a conservative visible authentication state through the optional browser bridge.
 
-It does **not** establish a VPN tunnel, read browser authentication data, modify routes or DNS, or replace an official client. Its tray state deliberately says that further connection capability is pending. See [the Chinese CquVpnCore note](./docs/CquVpnCore.zh-CN.md) for the precise boundary.
+The bridge reports only `unknown`, `auth-required`, or `authenticated`. It does **not** read browser cookies, storage, passwords, tokens, authorization headers, or network bodies. The core does **not** establish a VPN tunnel, modify routes or DNS, or replace an official client. Its tray state deliberately says that further connection capability is pending. See [the browser bridge note](./docs/BrowserAuthBridge.zh-CN.md) and [the Chinese CquVpnCore note](./docs/CquVpnCore.zh-CN.md) for the precise boundary.
 
 ## Current Portal Notes
 

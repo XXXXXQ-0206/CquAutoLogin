@@ -46,9 +46,13 @@ public sealed class CquVpnCoreClient
         return SendAfterStartupAsync(VpnCoreRequest.BeginBrowserLogin(), cancellationToken);
     }
 
-    public Task<VpnCoreStatus> ConfirmBrowserLoginAsync(CancellationToken cancellationToken)
+    public Task<VpnCoreStatus> ReportBrowserAuthAsync(
+        BrowserAuthState browserAuthState,
+        CancellationToken cancellationToken)
     {
-        return SendAfterStartupAsync(VpnCoreRequest.ConfirmBrowserLogin(), cancellationToken);
+        return SendAfterStartupAsync(
+            VpnCoreRequest.ReportBrowserAuth(browserAuthState),
+            cancellationToken);
     }
 
     public Task<VpnCoreStatus> GetStatusAsync(CancellationToken cancellationToken)
@@ -82,11 +86,11 @@ public sealed class CquVpnCoreClient
         {
             VpnCoreState.Stopped => GetStoppedDisplayStatus(),
             VpnCoreState.AwaitingBrowserLogin => new CquVpnDisplayStatus(
-                "等待浏览器认证（实验阶段，尚未建立 VPN 隧道）",
+                "等待浏览器自动检测认证状态（尚未建立 VPN 隧道）",
                 IsCoreRunning: true,
                 IsConnected: false),
             VpnCoreState.BrowserLoginComplete => new CquVpnDisplayStatus(
-                "浏览器认证已确认（等待后续连接能力）",
+                "浏览器认证已检测到（等待后续连接能力）",
                 IsCoreRunning: true,
                 IsConnected: false),
             _ => new CquVpnDisplayStatus("CquVpnCore 状态未知", IsCoreRunning: false, IsConnected: false)

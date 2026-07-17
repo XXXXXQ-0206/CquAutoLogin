@@ -21,19 +21,38 @@ public sealed class VpnCoreStateMachine
         _status = CreateStatus(
             VpnCoreState.AwaitingBrowserLogin,
             Guid.NewGuid(),
-            "Awaiting explicit browser-login confirmation.");
+            "Waiting for automatic browser-authentication detection.");
         return _status;
     }
 
-    public VpnCoreStatus ConfirmBrowserLogin()
+    public VpnCoreStatus ReportBrowserAuth(BrowserAuthState browserAuthState)
     {
-        EnsureState(
-            VpnCoreState.AwaitingBrowserLogin,
-            "Browser-login confirmation is only valid while waiting for it.");
-        _status = CreateStatus(
-            VpnCoreState.BrowserLoginComplete,
-            _status.OperationId,
-            "Browser login confirmed by the user. No VPN tunnel has been established.");
+        if (_status.State == VpnCoreState.Stopped)
+        {
+            if (browserAuthState != BrowserAuthState.Authenticated)
+            {
+                return _status;
+            }
+
+            _status = CreateStatus(
+                VpnCoreState.BrowserLoginComplete,
+                Guid.NewGuid(),
+                "Browser authentication detected automatically. No VPN tunnel has been established.");
+            return _status;
+        }
+
+        var nextState = browserAuthState == BrowserAuthState.Authenticated
+            ? VpnCoreState.BrowserLoginComplete
+            : VpnCoreState.AwaitingBrowserLogin;
+        var detail = browserAuthState switch
+        {
+            BrowserAuthState.Authenticated =>
+                "Browser authentication detected automatically. No VPN tunnel has been established.",
+            BrowserAuthState.AuthRequired => "The browser portal is waiting for authentication.",
+            _ => "Waiting for the browser bridge to report the portal state."
+        };
+
+        _status = CreateStatus(nextState, _status.OperationId, detail);
         return _status;
     }
 

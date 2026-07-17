@@ -1,4 +1,100 @@
+using System.Text.Json;
+
 namespace CquVpnCore.Contracts;
+
+public enum BrowserAuthState
+{
+    Unknown,
+    AuthRequired,
+    Authenticated
+}
+
+public sealed record BrowserAuthSignal(
+    BrowserAuthState State,
+    DateTimeOffset ReportedAtUtc = default);
+
+public sealed class BrowserAuthSignalStore
+{
+    private const string StateFileName = "browser-auth-state.json";
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly TimeProvider _timeProvider;
+
+    public BrowserAuthSignalStore(string? directoryPath = null, TimeProvider? timeProvider = null)
+    {
+        DirectoryPath = directoryPath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "CquAutoLogin",
+            "BrowserBridge");
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public string DirectoryPath { get; }
+
+    public string StatePath => Path.Combine(DirectoryPath, StateFileName);
+
+    public async Task WriteAsync(BrowserAuthState state, CancellationToken cancellationToken)
+    {
+        if (!Enum.IsDefined(state))
+        {
+            throw new ArgumentOutOfRangeException(nameof(state));
+        }
+
+        Directory.CreateDirectory(DirectoryPath);
+        var temporaryPath = Path.Combine(DirectoryPath, $".{StateFileName}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            var signal = new BrowserAuthSignal(state, _timeProvider.GetUtcNow());
+            await File.WriteAllTextAsync(
+                temporaryPath,
+                JsonSerializer.Serialize(signal, SerializerOptions),
+                cancellationToken);
+            File.Move(temporaryPath, StatePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    public BrowserAuthSignal? ReadRecent(TimeSpan maximumAge)
+    {
+        if (maximumAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumAge));
+        }
+
+        try
+        {
+            var signal = JsonSerializer.Deserialize<BrowserAuthSignal>(
+                File.ReadAllText(StatePath),
+                SerializerOptions);
+            if (signal is null || !Enum.IsDefined(signal.State))
+            {
+                return null;
+            }
+
+            var now = _timeProvider.GetUtcNow();
+            if (signal.ReportedAtUtc > now + TimeSpan.FromMinutes(1) ||
+                now - signal.ReportedAtUtc > maximumAge)
+            {
+                return null;
+            }
+
+            return signal;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
 
 public enum VpnCoreState
 {
@@ -11,11 +107,14 @@ public enum VpnCoreCommand
 {
     GetStatus,
     BeginBrowserLogin,
-    ConfirmBrowserLogin,
+    ReportBrowserAuth,
     Stop
 }
 
-public sealed record VpnCoreRequest(int ProtocolVersion, VpnCoreCommand Command)
+public sealed record VpnCoreRequest(
+    int ProtocolVersion,
+    VpnCoreCommand Command,
+    BrowserAuthSignal? BrowserAuth = null)
 {
     public const int CurrentProtocolVersion = 1;
 
@@ -23,7 +122,8 @@ public sealed record VpnCoreRequest(int ProtocolVersion, VpnCoreCommand Command)
 
     public static VpnCoreRequest BeginBrowserLogin() => new(CurrentProtocolVersion, VpnCoreCommand.BeginBrowserLogin);
 
-    public static VpnCoreRequest ConfirmBrowserLogin() => new(CurrentProtocolVersion, VpnCoreCommand.ConfirmBrowserLogin);
+    public static VpnCoreRequest ReportBrowserAuth(BrowserAuthState state) =>
+        new(CurrentProtocolVersion, VpnCoreCommand.ReportBrowserAuth, new BrowserAuthSignal(state));
 
     public static VpnCoreRequest Stop() => new(CurrentProtocolVersion, VpnCoreCommand.Stop);
 }

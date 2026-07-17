@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CquAutoLogin.Models;
 using CquAutoLogin.Services;
+using CquVpnCore.Contracts;
 
 namespace CquAutoLogin;
 
@@ -28,8 +29,10 @@ public partial class App : System.Windows.Application
     private SettingsService? _settingsService;
     private AutoStartService? _autoStartService;
     private CquVpnCoreClient? _cquVpnCoreClient;
+    private BrowserAuthSignalPoller? _browserAuthSignalPoller;
     private AppSettings? _settings;
     private MonitorState _currentTrayState = CreateInitialState();
+    private volatile bool _browserAuthObservationActive;
     private bool _forceShutdown;
 
     public App()
@@ -112,6 +115,19 @@ public partial class App : System.Windows.Application
         _cquVpnCoreClient = new CquVpnCoreClient(
             new ProcessCquVpnCoreHost(vpnCorePath, vpnPipeName, Environment.ProcessId),
             new NamedPipeCquVpnCoreCommandClient(vpnPipeName));
+        _browserAuthSignalPoller = new BrowserAuthSignalPoller(
+            new BrowserAuthSignalStore(),
+            HandleBrowserAuthSignalAsync);
+        _browserAuthSignalPoller.Start();
+        try
+        {
+            var manifestPath = new BrowserBridgeRegistrationService(_dataDirectory).Register(vpnCorePath);
+            LogInfo($"Browser bridge native host registered: {manifestPath}");
+        }
+        catch (Exception exception)
+        {
+            LogInfo($"Browser bridge registration skipped: {exception.Message}");
+        }
         var networkEnvironmentService = new NetworkEnvironmentService(wifiService);
         var internetProbeService = new InternetProbeService();
         var campusPortalService = new CampusPortalService();
@@ -210,10 +226,6 @@ public partial class App : System.Windows.Application
 
                 case TrayMenuCommand.ConnectVpn:
                     await ConnectVpnAsync(showError: true);
-                    break;
-
-                case TrayMenuCommand.ConfirmVpnBrowserLogin:
-                    await ConfirmVpnBrowserLoginAsync(showError: true);
                     break;
 
                 case TrayMenuCommand.OpenSettingsFolder:
@@ -322,6 +334,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        _browserAuthObservationActive = true;
         try
         {
             var status = await _cquVpnCoreClient.BeginBrowserLoginAsync(CancellationToken.None);
@@ -342,26 +355,30 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private async Task ConfirmVpnBrowserLoginAsync(bool showError)
+    private async Task HandleBrowserAuthSignalAsync(BrowserAuthSignal signal)
     {
         if (_cquVpnCoreClient is null)
         {
             return;
         }
 
+        if (!_browserAuthObservationActive && signal.State != BrowserAuthState.Authenticated)
+        {
+            return;
+        }
+
+        _browserAuthObservationActive = true;
         try
         {
-            var status = await _cquVpnCoreClient.ConfirmBrowserLoginAsync(CancellationToken.None);
-            ApplyVpnStatus(status);
-            _logger?.Info($"CquVpnCore: {status.Detail}");
+            var status = await _cquVpnCoreClient.ReportBrowserAuthAsync(
+                signal.State,
+                CancellationToken.None);
+            await Dispatcher.InvokeAsync(() => ApplyVpnStatus(status));
+            _logger?.Info($"Browser bridge: {signal.State}; CquVpnCore: {status.Detail}");
         }
         catch (Exception exception)
         {
-            _logger?.Error(exception, "CquVpnCore could not confirm browser login.");
-            if (showError)
-            {
-                ShowNonFatalMessage("CquVpnCore 当前不在等待浏览器认证状态。请先选择“连接并打开认证页”。");
-            }
+            _logger?.Error(exception, "CquVpnCore could not process browser-authentication state.");
         }
     }
 
@@ -450,6 +467,14 @@ public partial class App : System.Windows.Application
         _showSignal?.Dispose();
         _showSignalCts?.Dispose();
         _showSignalThread = null;
+        try
+        {
+            _browserAuthSignalPoller?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch
+        {
+        }
+
         _monitorCoordinator?.Dispose();
         _trayIconService?.Dispose();
 

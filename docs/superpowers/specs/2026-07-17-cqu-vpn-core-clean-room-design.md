@@ -106,3 +106,6 @@ This slice gives CquAutoLogin a vendor-free VPN surface that can report `Awaitin
 The current installed-runtime integration is not extended. CquAutoLogin will switch its VPN command to CquVpnCore only after C3 proves an authenticated negotiation. Until C5, the core remains an experimental development feature and does not alter existing vendor installation state.
 
 No new release may describe CquVpnCore as connected, compatible, vendor-free, or ready for uninstall until the corresponding gate has passed.
+# Status update (2026-07-18)
+
+> This design snapshot predates the browser-authentication bridge. The current implementation is described in `docs/BrowserAuthBridge.zh-CN.md`; it reports only a conservative visible state and does not inspect browser storage, credentials, or traffic.

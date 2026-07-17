@@ -24,7 +24,7 @@ public sealed record RedactedProbeSnapshot(
     RedactedEndpointSnapshot Endpoint,
     RedactedFramingSnapshot Framing,
     RedactedNetworkSnapshot Network,
-    bool BrowserLoginConfirmed);
+    bool BrowserLoginDetected);
 
 public static class RedactedProbeSerializer
 {

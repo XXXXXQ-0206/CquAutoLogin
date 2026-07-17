@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CquVpnCore.Browser;
 using CquVpnCore.Host;
 using CquVpnCore.Ipc;
 using CquVpnCore.Portal;
@@ -11,6 +12,12 @@ internal static class Program
     [STAThread]
     private static async Task<int> Main(string[] arguments)
     {
+        if (arguments.Length == 1 &&
+            string.Equals(arguments[0], "--native-messaging", StringComparison.Ordinal))
+        {
+            return await NativeMessagingHost.RunAsync(CancellationToken.None);
+        }
+
         if (!CquVpnCoreHostOptions.TryParse(arguments, out var options))
         {
             return 2;

@@ -22,11 +22,11 @@ public sealed class RedactedProbeSchemaTests
             new RedactedEndpointSnapshot("controller", 443, "tls", "h2", TimeSpan.FromMilliseconds(120)),
             new RedactedFramingSnapshot("outbound", 128, "opaque"),
             new RedactedNetworkSnapshot(0, 0),
-            BrowserLoginConfirmed: false);
+            BrowserLoginDetected: false);
 
         var serialized = RedactedProbeSerializer.Serialize(snapshot);
 
-        Assert.Contains("browserLoginConfirmed", serialized, StringComparison.Ordinal);
+        Assert.Contains("browserLoginDetected", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("token", serialized, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -45,6 +45,29 @@ public sealed class NamedPipeVpnCoreServerTests
         Assert.DoesNotContain("token", status.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task BeginBrowserLogin_is_idempotent_after_automatic_authentication()
+    {
+        var launcher = new RecordingPortalLauncher();
+        await using var server = new NamedPipeVpnCoreServer(
+            CreatePipeName(),
+            new VpnCoreStateMachine(TimeProvider.System),
+            launcher);
+        server.Start();
+        var client = new NamedPipeVpnCoreClient(server.PipeName);
+
+        await client.SendAsync(VpnCoreRequest.BeginBrowserLogin(), CancellationToken.None);
+        var detected = await client.SendAsync(
+            VpnCoreRequest.ReportBrowserAuth(BrowserAuthState.Authenticated),
+            CancellationToken.None);
+        var repeated = await client.SendAsync(VpnCoreRequest.BeginBrowserLogin(), CancellationToken.None);
+
+        Assert.Equal(VpnCoreState.BrowserLoginComplete, detected.State);
+        Assert.Equal(VpnCoreState.BrowserLoginComplete, repeated.State);
+        Assert.Null(repeated.ErrorCode);
+        Assert.Single(launcher.OpenedUris);
+    }
+
     private static string CreatePipeName() => $"CquVpnCore.Tests.{Guid.NewGuid():N}";
 
     private sealed class RecordingPortalLauncher : IBrowserPortalLauncher

@@ -21,17 +21,21 @@ public sealed class CquVpnCoreClientTests
     }
 
     [Fact]
-    public async Task ConfirmBrowserLogin_sends_an_explicit_confirmation_command()
+    public async Task ReportBrowserAuth_sends_an_automatic_signal_command()
     {
         var host = new RecordingCoreHost();
         var commandClient = new RecordingCommandClient(CreateStatus(VpnCoreState.BrowserLoginComplete));
         var client = new CquVpnCoreClient(host, commandClient);
 
-        var status = await client.ConfirmBrowserLoginAsync(CancellationToken.None);
+        var status = await client.ReportBrowserAuthAsync(
+            BrowserAuthState.Authenticated,
+            CancellationToken.None);
 
         Assert.True(host.Started);
         Assert.Equal(VpnCoreState.BrowserLoginComplete, status.State);
-        Assert.Equal(VpnCoreCommand.ConfirmBrowserLogin, Assert.Single(commandClient.Commands).Command);
+        var request = Assert.Single(commandClient.Commands);
+        Assert.Equal(VpnCoreCommand.ReportBrowserAuth, request.Command);
+        Assert.Equal(BrowserAuthState.Authenticated, request.BrowserAuth?.State);
     }
 
     [Fact]
@@ -48,11 +52,11 @@ public sealed class CquVpnCoreClientTests
     }
 
     [Fact]
-    public void Display_status_for_browser_confirmation_does_not_claim_a_tunnel()
+    public void Display_status_for_detected_browser_auth_does_not_claim_a_tunnel()
     {
         var display = CquVpnCoreClient.ToDisplayStatus(CreateStatus(VpnCoreState.BrowserLoginComplete));
 
-        Assert.Equal("浏览器认证已确认（等待后续连接能力）", display.Text);
+        Assert.Equal("浏览器认证已检测到（等待后续连接能力）", display.Text);
         Assert.True(display.IsCoreRunning);
         Assert.False(display.IsConnected);
         Assert.DoesNotContain("已连接", display.Text, StringComparison.Ordinal);

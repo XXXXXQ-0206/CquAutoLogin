@@ -142,3 +142,6 @@ public async Task BeginBrowserLogin_starts_host_and_returns_waiting_state()
 - [ ] Run `dotnet test .\CquVpnCore.Tests\CquVpnCore.Tests.csproj` and `dotnet test .\CquAutoLogin.Tests\CquAutoLogin.Tests.csproj`.
 - [ ] Document exactly that C0/C1 launch a browser and record explicit user confirmation only; they do not create a VPN tunnel, consume browser credentials, alter network settings, or support uninstalling the vendor client.
 - [ ] Commit documentation with `docs: describe CquVpnCore experimental C0 C1 boundary`.
+# Status update (2026-07-18)
+
+> This C0/C1 implementation plan has been superseded for browser authentication by `docs/BrowserAuthBridge.zh-CN.md`: the current code uses an optional visible-state browser bridge and no longer provides a manual confirmation command.

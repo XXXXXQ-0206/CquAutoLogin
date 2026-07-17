@@ -114,7 +114,7 @@ public sealed class NamedPipeVpnCoreServer : IAsyncDisposable
             {
                 VpnCoreCommand.GetStatus => _stateMachine.GetStatus(),
                 VpnCoreCommand.BeginBrowserLogin => BeginBrowserLogin(),
-                VpnCoreCommand.ConfirmBrowserLogin => _stateMachine.ConfirmBrowserLogin(),
+                VpnCoreCommand.ReportBrowserAuth => ReportBrowserAuth(request),
                 VpnCoreCommand.Stop => _stateMachine.Stop(),
                 _ => CreateError("UnsupportedCommand", "The IPC command is not supported.")
             };
@@ -131,6 +131,12 @@ public sealed class NamedPipeVpnCoreServer : IAsyncDisposable
 
     private VpnCoreStatus BeginBrowserLogin()
     {
+        var currentStatus = _stateMachine.GetStatus();
+        if (currentStatus.State != VpnCoreState.Stopped)
+        {
+            return currentStatus;
+        }
+
         try
         {
             _portalLauncher.Launch(ShellBrowserPortalLauncher.PortalUri);
@@ -144,6 +150,16 @@ public sealed class NamedPipeVpnCoreServer : IAsyncDisposable
         {
             return CreateError("BrowserLaunchFailed", "The browser portal could not be opened.");
         }
+    }
+
+    private VpnCoreStatus ReportBrowserAuth(VpnCoreRequest request)
+    {
+        if (request.BrowserAuth is null)
+        {
+            return CreateError("InvalidRequest", "The browser-authentication signal was invalid.");
+        }
+
+        return _stateMachine.ReportBrowserAuth(request.BrowserAuth.State);
     }
 
     private VpnCoreStatus CreateError(string errorCode, string detail)
