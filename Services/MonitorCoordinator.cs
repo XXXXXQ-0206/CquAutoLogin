@@ -174,7 +174,7 @@ public sealed class MonitorCoordinator : IDisposable
             });
 
             var snapshot = await _networkEnvironmentService.CaptureAsync(_settings, cancellationToken);
-            var campusCandidates = GetCampusCandidates(snapshot);
+            var campusCandidates = await GetCampusCandidatesAsync(snapshot, cancellationToken);
 
             foreach (var candidate in campusCandidates)
             {
@@ -510,7 +510,9 @@ public sealed class MonitorCoordinator : IDisposable
         return CampusEnsureOutcome.WaitingForConfirmation;
     }
 
-    private List<NetworkCandidate> GetCampusCandidates(NetworkSnapshot snapshot)
+    private async Task<List<NetworkCandidate>> GetCampusCandidatesAsync(
+        NetworkSnapshot snapshot,
+        CancellationToken cancellationToken)
     {
         var ethernetCandidate = snapshot.ActivePhysicalInterfaces.FirstOrDefault(candidate => candidate.IsEthernet);
         var campusWifiCandidate =
@@ -518,6 +520,13 @@ public sealed class MonitorCoordinator : IDisposable
             string.Equals(snapshot.Wifi.Ssid, _settings.WifiName, StringComparison.OrdinalIgnoreCase)
                 ? snapshot.ActiveWifiCandidate
                 : null;
+
+        if (ethernetCandidate is not null &&
+            !await _campusPortalService.IsPortalReachableAsync(_settings, cancellationToken))
+        {
+            _logger.Info($"以太网 {ethernetCandidate.Name} 未检测到 CQU Portal，跳过认证流程。");
+            ethernetCandidate = null;
+        }
 
         var candidates = new List<NetworkCandidate>();
 
