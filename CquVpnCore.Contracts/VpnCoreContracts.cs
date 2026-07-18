@@ -79,26 +79,14 @@ public sealed class BrowserAuthSignalStore
         }
     }
 
-    public BrowserAuthSignal? ReadRecent(TimeSpan maximumAge)
+    public BrowserAuthSignal? Read()
     {
-        if (maximumAge <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maximumAge));
-        }
-
         try
         {
             var signal = JsonSerializer.Deserialize<BrowserAuthSignal>(
                 File.ReadAllText(StatePath),
                 SerializerOptions);
             if (signal is null || !Enum.IsDefined(signal.State) || !Enum.IsDefined(signal.Kind))
-            {
-                return null;
-            }
-
-            var now = _timeProvider.GetUtcNow();
-            if (signal.ReportedAtUtc > now + TimeSpan.FromMinutes(1) ||
-                now - signal.ReportedAtUtc > maximumAge)
             {
                 return null;
             }
@@ -113,6 +101,29 @@ public sealed class BrowserAuthSignalStore
         {
             return null;
         }
+    }
+
+    public BrowserAuthSignal? ReadRecent(TimeSpan maximumAge)
+    {
+        if (maximumAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumAge));
+        }
+
+        var signal = Read();
+        if (signal is null)
+        {
+            return null;
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        if (signal.ReportedAtUtc > now + TimeSpan.FromMinutes(1) ||
+            now - signal.ReportedAtUtc > maximumAge)
+        {
+            return null;
+        }
+
+        return signal;
     }
 }
 

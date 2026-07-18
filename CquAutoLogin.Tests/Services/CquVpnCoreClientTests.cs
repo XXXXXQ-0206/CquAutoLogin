@@ -74,6 +74,39 @@ public sealed class CquVpnCoreClientTests
     }
 
     [Fact]
+    public void Display_status_for_expired_bridge_report_does_not_claim_a_tunnel()
+    {
+        var display = CquVpnCoreClient.GetStoppedDisplayStatus(browserBridgeReportExpired: true);
+
+        Assert.Equal("浏览器桥接上次报告已过期（打开认证页或重新加载扩展）", display.Text);
+        Assert.False(display.IsCoreRunning);
+        Assert.False(display.IsConnected);
+        Assert.DoesNotContain("已连接", display.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Stopped_status_propagates_an_expired_bridge_report_without_claiming_a_tunnel()
+    {
+        var display = CquVpnCoreClient.ToDisplayStatus(
+            CreateStatus(VpnCoreState.Stopped),
+            browserBridgeReportExpired: true);
+
+        Assert.Equal("浏览器桥接上次报告已过期（打开认证页或重新加载扩展）", display.Text);
+        Assert.False(display.IsCoreRunning);
+        Assert.False(display.IsConnected);
+    }
+
+    [Fact]
+    public void Missing_bridge_report_is_not_attributed_to_a_stopped_core()
+    {
+        var display = CquVpnCoreClient.GetStoppedDisplayStatus();
+
+        Assert.Equal("尚未收到浏览器桥接报告", display.Text);
+        Assert.False(display.IsCoreRunning);
+        Assert.False(display.IsConnected);
+    }
+
+    [Fact]
     public void Build_project_config_publishes_the_core_to_the_same_directory()
     {
         var projectPath = FindProjectPath();

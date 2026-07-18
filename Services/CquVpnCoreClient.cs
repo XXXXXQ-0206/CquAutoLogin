@@ -65,19 +65,24 @@ public sealed class CquVpnCoreClient
         return SendAfterStartupAsync(VpnCoreRequest.Stop(), cancellationToken);
     }
 
-    public static CquVpnDisplayStatus GetStoppedDisplayStatus(bool browserBridgeReady = false)
+    public static CquVpnDisplayStatus GetStoppedDisplayStatus(
+        bool browserBridgeReady = false,
+        bool browserBridgeReportExpired = false)
     {
         return new CquVpnDisplayStatus(
             browserBridgeReady
                 ? "浏览器桥接已回执（等待认证页）"
-                : "尚未收到浏览器桥接报告（CquVpnCore 未启动）",
+                : browserBridgeReportExpired
+                    ? "浏览器桥接上次报告已过期（打开认证页或重新加载扩展）"
+                    : "尚未收到浏览器桥接报告",
             IsCoreRunning: false,
             IsConnected: false);
     }
 
     public static CquVpnDisplayStatus ToDisplayStatus(
         VpnCoreStatus status,
-        bool browserBridgeReady = false)
+        bool browserBridgeReady = false,
+        bool browserBridgeReportExpired = false)
     {
         ArgumentNullException.ThrowIfNull(status);
 
@@ -91,7 +96,9 @@ public sealed class CquVpnCoreClient
 
         return status.State switch
         {
-            VpnCoreState.Stopped => GetStoppedDisplayStatus(browserBridgeReady),
+            VpnCoreState.Stopped => GetStoppedDisplayStatus(
+                browserBridgeReady,
+                browserBridgeReportExpired),
             VpnCoreState.AwaitingBrowserLogin => new CquVpnDisplayStatus(
                 "等待浏览器自动检测认证状态（尚未建立 VPN 隧道）",
                 IsCoreRunning: true,

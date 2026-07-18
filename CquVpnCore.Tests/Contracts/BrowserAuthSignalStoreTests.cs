@@ -48,6 +48,27 @@ public sealed class BrowserAuthSignalStoreTests
     }
 
     [Fact]
+    public async Task Expired_signal_remains_available_for_diagnostics()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 7, 18, 0, 0, 0, TimeSpan.Zero));
+            var store = new BrowserAuthSignalStore(directory, timeProvider);
+
+            await store.WriteAsync(BrowserAuthState.Authenticated, CancellationToken.None);
+            timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+            Assert.Null(store.ReadRecent(TimeSpan.FromSeconds(10)));
+            Assert.Equal(BrowserAuthState.Authenticated, store.Read()?.State);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Bridge_ready_report_is_read_as_non_authentication_state()
     {
         var directory = CreateTemporaryDirectory();

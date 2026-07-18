@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     private const string SingleInstanceMutexName = @"Local\CquAutoLogin.Singleton";
     private const string ActivateTrayMenuSignalName = @"Local\CquAutoLogin.ActivateTrayMenu";
     private const string PortalEntryUrl = "http://login.cqu.edu.cn:801/eportal/";
+    private static readonly TimeSpan BrowserBridgeSignalMaximumAge = TimeSpan.FromSeconds(15);
 
     private readonly string _dataDirectory;
     private readonly string _bootstrapLogPath;
@@ -34,6 +35,7 @@ public partial class App : System.Windows.Application
     private MonitorState _currentTrayState = CreateInitialState();
     private volatile bool _browserAuthObservationActive;
     private bool _browserBridgeReady;
+    private bool _browserBridgeReportExpired;
     private bool _forceShutdown;
 
     public App()
@@ -116,9 +118,13 @@ public partial class App : System.Windows.Application
         _cquVpnCoreClient = new CquVpnCoreClient(
             new ProcessCquVpnCoreHost(vpnCorePath, vpnPipeName, Environment.ProcessId),
             new NamedPipeCquVpnCoreCommandClient(vpnPipeName));
+        var browserAuthSignalStore = new BrowserAuthSignalStore();
+        _browserBridgeReportExpired = browserAuthSignalStore.Read() is not null &&
+            browserAuthSignalStore.ReadRecent(BrowserBridgeSignalMaximumAge) is null;
         _browserAuthSignalPoller = new BrowserAuthSignalPoller(
-            new BrowserAuthSignalStore(),
-            HandleBrowserAuthSignalAsync);
+            browserAuthSignalStore,
+            HandleBrowserAuthSignalAsync,
+            maximumSignalAge: BrowserBridgeSignalMaximumAge);
         _browserAuthSignalPoller.Start();
         try
         {
@@ -160,7 +166,9 @@ public partial class App : System.Windows.Application
         _trayIconService.CommandRequested += OnTrayCommandRequested;
         _trayIconService.ToggleRequested += OnTrayToggleRequested;
         _trayIconService.Update(_currentTrayState, _settings);
-        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(_browserBridgeReady));
+        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(
+            _browserBridgeReady,
+            _browserBridgeReportExpired));
         LogInfo("Native tray icon created.");
 
         _monitorCoordinator.StateChanged += (_, state) =>
@@ -379,6 +387,7 @@ public partial class App : System.Windows.Application
 
     private async Task HandleBrowserAuthSignalAsync(BrowserAuthSignal signal)
     {
+        _browserBridgeReportExpired = false;
         if (_cquVpnCoreClient is null)
         {
             return;
@@ -390,7 +399,9 @@ public partial class App : System.Windows.Application
             if (!_browserAuthObservationActive)
             {
                 await Dispatcher.InvokeAsync(() =>
-                    _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(_browserBridgeReady)));
+                    _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(
+                        _browserBridgeReady,
+                        _browserBridgeReportExpired)));
             }
 
             _logger?.Info("Browser bridge sent a readiness report.");
@@ -419,7 +430,10 @@ public partial class App : System.Windows.Application
 
     private void ApplyVpnStatus(CquVpnCore.Contracts.VpnCoreStatus status)
     {
-        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(status, _browserBridgeReady));
+        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(
+            status,
+            _browserBridgeReady,
+            _browserBridgeReportExpired));
     }
 
     private bool TryBecomeSingleInstance()
