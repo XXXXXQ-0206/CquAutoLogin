@@ -27,7 +27,6 @@ public partial class App : System.Windows.Application
     private FileLogger? _logger;
     private SettingsService? _settingsService;
     private AutoStartService? _autoStartService;
-    private ATrustClientService? _aTrustClientService;
     private AppSettings? _settings;
     private MonitorState _currentTrayState = CreateInitialState();
     private bool _forceShutdown;
@@ -107,7 +106,6 @@ public partial class App : System.Windows.Application
 
         var processRunner = new ProcessRunner();
         var wifiService = new WifiService(processRunner);
-        _aTrustClientService = new ATrustClientService(processRunner);
         var networkEnvironmentService = new NetworkEnvironmentService(wifiService);
         var internetProbeService = new InternetProbeService();
         var campusPortalService = new CampusPortalService();
@@ -117,7 +115,6 @@ public partial class App : System.Windows.Application
             internetProbeService,
             campusPortalService,
             wifiService,
-            _aTrustClientService,
             _logger);
         LogInfo("Background services created.");
 
@@ -140,7 +137,6 @@ public partial class App : System.Windows.Application
         _trayIconService.CommandRequested += OnTrayCommandRequested;
         _trayIconService.ToggleRequested += OnTrayToggleRequested;
         _trayIconService.Update(_currentTrayState, _settings);
-        await RefreshATrustStatusAsync();
         LogInfo("Native tray icon created.");
 
         _monitorCoordinator.StateChanged += (_, state) =>
@@ -156,11 +152,6 @@ public partial class App : System.Windows.Application
         _autoStartService.Apply(_settings);
         _monitorCoordinator.Start();
         LogInfo("Monitoring started.");
-
-        if (_settings.OpenATrustAtStartup)
-        {
-            await OpenATrustAsync(showError: false);
-        }
 
         if (!silent)
         {
@@ -205,14 +196,6 @@ public partial class App : System.Windows.Application
                     OpenPortal();
                     break;
 
-                case TrayMenuCommand.OpenATrust:
-                    await OpenATrustAsync(showError: true);
-                    break;
-
-                case TrayMenuCommand.ExitATrust:
-                    await ExitATrustAsync();
-                    break;
-
                 case TrayMenuCommand.OpenSettingsFolder:
                     OpenSettingsFolder();
                     break;
@@ -252,10 +235,6 @@ public partial class App : System.Windows.Application
 
             case TraySettingToggle.AutoConnectCampusWifi:
                 _settings.AutoConnectCampusWifi = enabled;
-                break;
-
-            case TraySettingToggle.OpenATrustAtStartup:
-                _settings.OpenATrustAtStartup = enabled;
                 break;
 
             default:
@@ -310,67 +289,6 @@ public partial class App : System.Windows.Application
             FileName = directory,
             UseShellExecute = true
         });
-    }
-
-    private async Task OpenATrustAsync(bool showError)
-    {
-        if (_aTrustClientService is null)
-        {
-            return;
-        }
-
-        var result = _aTrustClientService.OpenInteractive();
-        if (!result.Success)
-        {
-            if (showError)
-            {
-                ShowNonFatalMessage(result.Message);
-            }
-            return;
-        }
-
-        _logger?.Info(result.Message);
-        await RefreshATrustStatusAsync();
-    }
-
-    private async Task ExitATrustAsync()
-    {
-        if (_aTrustClientService is null)
-        {
-            return;
-        }
-
-        var confirmation = System.Windows.MessageBox.Show(
-            "这会调用 ATrust 官方工具完整退出客户端并断开 VPN。继续吗？",
-            "关闭 ATrust VPN",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (confirmation != MessageBoxResult.Yes)
-        {
-            return;
-        }
-
-        var result = _aTrustClientService.ExitClient();
-        if (!result.Success)
-        {
-            ShowNonFatalMessage(result.Message);
-            return;
-        }
-
-        _logger?.Info(result.Message);
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        await RefreshATrustStatusAsync();
-    }
-
-    private async Task RefreshATrustStatusAsync()
-    {
-        if (_aTrustClientService is null)
-        {
-            return;
-        }
-
-        var status = await _aTrustClientService.GetStatusAsync(CancellationToken.None);
-        _trayIconService?.UpdateATrustStatus(status);
     }
 
     private bool TryBecomeSingleInstance()
@@ -577,7 +495,6 @@ public partial class App : System.Windows.Application
             CampusState = "未知",
             PreferredNetwork = "未选择",
             WifiState = "未知",
-            ATrustState = "正在检测",
             LastAction = "尚无动作",
             NextCheck = "网络事件触发 + 5 分钟兜底"
         };
