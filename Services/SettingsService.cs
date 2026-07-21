@@ -6,7 +6,6 @@ namespace CquAutoLogin.Services;
 
 public sealed class SettingsService
 {
-    private const string LegacyVpnStartupPropertyName = "Open" + "ATrustAtStartup";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -30,13 +29,15 @@ public sealed class SettingsService
             return defaults;
         }
 
-        var json = await File.ReadAllTextAsync(SettingsPath);
-        var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+        AppSettings? settings;
+        {
+            await using var stream = File.OpenRead(SettingsPath);
+            settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions);
+        }
 
         settings ??= new AppSettings();
 
-        var migratedLegacyVpnSetting = MigrateLegacyVpnStartupSetting(json, settings);
-        if (NormalizeSettings(settings) || migratedLegacyVpnSetting)
+        if (NormalizeSettings(settings))
         {
             await SaveAsync(settings);
         }
@@ -65,44 +66,5 @@ public sealed class SettingsService
         }
 
         return false;
-    }
-
-    private static bool MigrateLegacyVpnStartupSetting(string json, AppSettings settings)
-    {
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
-        var hasNewKey = false;
-        var hasLegacyKey = false;
-        bool? legacyValue = null;
-        foreach (var property in document.RootElement.EnumerateObject())
-        {
-            if (property.NameEquals(nameof(AppSettings.OpenVpnPortalAtStartup)) ||
-                property.Name.Equals(nameof(AppSettings.OpenVpnPortalAtStartup), StringComparison.OrdinalIgnoreCase))
-            {
-                hasNewKey = true;
-            }
-
-            if (property.Name.Equals(LegacyVpnStartupPropertyName, StringComparison.OrdinalIgnoreCase))
-            {
-                hasLegacyKey = true;
-                legacyValue = property.Value.ValueKind switch
-                {
-                    JsonValueKind.True => true,
-                    JsonValueKind.False => false,
-                    _ => legacyValue
-                };
-            }
-        }
-
-        if (!hasNewKey && legacyValue.HasValue)
-        {
-            settings.OpenVpnPortalAtStartup = legacyValue.Value;
-        }
-
-        return hasLegacyKey;
     }
 }

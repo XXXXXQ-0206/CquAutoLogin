@@ -5,7 +5,6 @@ using System.Windows;
 using System.Windows.Threading;
 using CquAutoLogin.Models;
 using CquAutoLogin.Services;
-using CquVpnCore.Contracts;
 
 namespace CquAutoLogin;
 
@@ -15,7 +14,6 @@ public partial class App : System.Windows.Application
     private const string SingleInstanceMutexName = @"Local\CquAutoLogin.Singleton";
     private const string ActivateTrayMenuSignalName = @"Local\CquAutoLogin.ActivateTrayMenu";
     private const string PortalEntryUrl = "http://login.cqu.edu.cn:801/eportal/";
-    private static readonly TimeSpan BrowserBridgeSignalMaximumAge = TimeSpan.FromSeconds(15);
 
     private readonly string _dataDirectory;
     private readonly string _bootstrapLogPath;
@@ -29,13 +27,8 @@ public partial class App : System.Windows.Application
     private FileLogger? _logger;
     private SettingsService? _settingsService;
     private AutoStartService? _autoStartService;
-    private CquVpnCoreClient? _cquVpnCoreClient;
-    private BrowserAuthSignalPoller? _browserAuthSignalPoller;
     private AppSettings? _settings;
     private MonitorState _currentTrayState = CreateInitialState();
-    private volatile bool _browserAuthObservationActive;
-    private bool _browserBridgeReady;
-    private bool _browserBridgeReportExpired;
     private bool _forceShutdown;
 
     public App()
@@ -113,28 +106,6 @@ public partial class App : System.Windows.Application
 
         var processRunner = new ProcessRunner();
         var wifiService = new WifiService(processRunner);
-        var vpnPipeName = $"CquVpnCore.{Environment.ProcessId}";
-        var vpnCorePath = Path.Combine(AppContext.BaseDirectory, "CquVpnCore.exe");
-        _cquVpnCoreClient = new CquVpnCoreClient(
-            new ProcessCquVpnCoreHost(vpnCorePath, vpnPipeName, Environment.ProcessId),
-            new NamedPipeCquVpnCoreCommandClient(vpnPipeName));
-        var browserAuthSignalStore = new BrowserAuthSignalStore();
-        _browserBridgeReportExpired = browserAuthSignalStore.Read() is not null &&
-            browserAuthSignalStore.ReadRecent(BrowserBridgeSignalMaximumAge) is null;
-        _browserAuthSignalPoller = new BrowserAuthSignalPoller(
-            browserAuthSignalStore,
-            HandleBrowserAuthSignalAsync,
-            maximumSignalAge: BrowserBridgeSignalMaximumAge);
-        _browserAuthSignalPoller.Start();
-        try
-        {
-            var manifestPath = new BrowserBridgeRegistrationService(_dataDirectory).Register(vpnCorePath);
-            LogInfo($"Browser bridge native host registered: {manifestPath}");
-        }
-        catch (Exception exception)
-        {
-            LogInfo($"Browser bridge registration skipped: {exception.Message}");
-        }
         var networkEnvironmentService = new NetworkEnvironmentService(wifiService);
         var internetProbeService = new InternetProbeService();
         var campusPortalService = new CampusPortalService();
@@ -166,9 +137,6 @@ public partial class App : System.Windows.Application
         _trayIconService.CommandRequested += OnTrayCommandRequested;
         _trayIconService.ToggleRequested += OnTrayToggleRequested;
         _trayIconService.Update(_currentTrayState, _settings);
-        _trayIconService.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(
-            _browserBridgeReady,
-            _browserBridgeReportExpired));
         LogInfo("Native tray icon created.");
 
         _monitorCoordinator.StateChanged += (_, state) =>
@@ -184,11 +152,6 @@ public partial class App : System.Windows.Application
         _autoStartService.Apply(_settings);
         _monitorCoordinator.Start();
         LogInfo("Monitoring started.");
-
-        if (_settings.OpenVpnPortalAtStartup)
-        {
-            await ConnectVpnAsync(showError: false);
-        }
 
         if (!silent)
         {
@@ -233,14 +196,6 @@ public partial class App : System.Windows.Application
                     OpenPortal();
                     break;
 
-                case TrayMenuCommand.ConnectVpn:
-                    await ConnectVpnAsync(showError: true);
-                    break;
-
-                case TrayMenuCommand.OpenBrowserBridgeFolder:
-                    OpenBrowserBridgeFolder();
-                    break;
-
                 case TrayMenuCommand.OpenSettingsFolder:
                     OpenSettingsFolder();
                     break;
@@ -280,10 +235,6 @@ public partial class App : System.Windows.Application
 
             case TraySettingToggle.AutoConnectCampusWifi:
                 _settings.AutoConnectCampusWifi = enabled;
-                break;
-
-            case TraySettingToggle.OpenVpnPortalAtStartup:
-                _settings.OpenVpnPortalAtStartup = enabled;
                 break;
 
             default:
@@ -338,102 +289,6 @@ public partial class App : System.Windows.Application
             FileName = directory,
             UseShellExecute = true
         });
-    }
-
-    private static void OpenBrowserBridgeFolder()
-    {
-        var directory = Path.Combine(AppContext.BaseDirectory, "Assets", "BrowserBridge");
-        try
-        {
-            new BrowserBridgeSetupLauncher().Open(directory);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            ShowNonFatalMessage("未找到浏览器桥接文件。请重新安装 CquAutoLogin。");
-        }
-        catch (Exception exception)
-        {
-            ShowNonFatalMessage($"无法打开浏览器桥接设置：{exception.Message}");
-        }
-    }
-
-    private async Task ConnectVpnAsync(bool showError)
-    {
-        if (_cquVpnCoreClient is null)
-        {
-            return;
-        }
-
-        _browserAuthObservationActive = true;
-        try
-        {
-            var status = await _cquVpnCoreClient.BeginBrowserLoginAsync(CancellationToken.None);
-            ApplyVpnStatus(status);
-            _logger?.Info($"CquVpnCore: {status.Detail}");
-        }
-        catch (Exception exception)
-        {
-            _logger?.Error(exception, "CquVpnCore could not start browser login.");
-            _trayIconService?.UpdateVpnStatus(new CquVpnDisplayStatus(
-                "CquVpnCore 启动失败",
-                IsCoreRunning: false,
-                IsConnected: false));
-            if (showError)
-            {
-                ShowNonFatalMessage("CquVpnCore 未能启动或响应。请检查应用目录中是否存在 CquVpnCore.exe。");
-            }
-        }
-    }
-
-    private async Task HandleBrowserAuthSignalAsync(BrowserAuthSignal signal)
-    {
-        _browserBridgeReportExpired = false;
-        if (_cquVpnCoreClient is null)
-        {
-            return;
-        }
-
-        if (signal.Kind == BrowserBridgeReportKind.BridgeReady)
-        {
-            _browserBridgeReady = true;
-            if (!_browserAuthObservationActive)
-            {
-                await Dispatcher.InvokeAsync(() =>
-                    _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.GetStoppedDisplayStatus(
-                        _browserBridgeReady,
-                        _browserBridgeReportExpired)));
-            }
-
-            _logger?.Info("Browser bridge sent a readiness report.");
-            return;
-        }
-
-        if (!_browserAuthObservationActive && signal.State != BrowserAuthState.Authenticated)
-        {
-            return;
-        }
-
-        _browserAuthObservationActive = true;
-        try
-        {
-            var status = await _cquVpnCoreClient.ReportBrowserAuthAsync(
-                signal.State,
-                CancellationToken.None);
-            await Dispatcher.InvokeAsync(() => ApplyVpnStatus(status));
-            _logger?.Info($"Browser bridge: {signal.State}; CquVpnCore: {status.Detail}");
-        }
-        catch (Exception exception)
-        {
-            _logger?.Error(exception, "CquVpnCore could not process browser-authentication state.");
-        }
-    }
-
-    private void ApplyVpnStatus(CquVpnCore.Contracts.VpnCoreStatus status)
-    {
-        _trayIconService?.UpdateVpnStatus(CquVpnCoreClient.ToDisplayStatus(
-            status,
-            _browserBridgeReady,
-            _browserBridgeReportExpired));
     }
 
     private bool TryBecomeSingleInstance()
@@ -516,14 +371,6 @@ public partial class App : System.Windows.Application
         _showSignal?.Dispose();
         _showSignalCts?.Dispose();
         _showSignalThread = null;
-        try
-        {
-            _browserAuthSignalPoller?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        }
-        catch
-        {
-        }
-
         _monitorCoordinator?.Dispose();
         _trayIconService?.Dispose();
 
@@ -648,7 +495,6 @@ public partial class App : System.Windows.Application
             CampusState = "未知",
             PreferredNetwork = "未选择",
             WifiState = "未知",
-            VpnState = "正在检测",
             LastAction = "尚无动作",
             NextCheck = "网络事件触发 + 5 分钟兜底"
         };

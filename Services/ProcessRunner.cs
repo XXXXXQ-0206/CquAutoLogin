@@ -5,16 +5,7 @@ namespace CquAutoLogin.Services;
 
 public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
 
-public interface ICommandRunner
-{
-    Task<ProcessResult> RunAsync(
-        string fileName,
-        IEnumerable<string> arguments,
-        int timeoutMs,
-        CancellationToken cancellationToken);
-}
-
-public sealed class ProcessRunner : ICommandRunner
+public sealed class ProcessRunner
 {
     public async Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, int timeoutMs = 15000, CancellationToken cancellationToken = default)
     {
@@ -39,62 +30,16 @@ public sealed class ProcessRunner : ICommandRunner
 
         process.Start();
 
-        var outputTask = process.StandardOutput.ReadToEndAsync();
-        var errorTask = process.StandardError.ReadToEndAsync();
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken)
-                .WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), cancellationToken);
-            return new ProcessResult(process.ExitCode, await outputTask, await errorTask);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            await TerminateProcessTreeAsync(process, outputTask, errorTask);
-            throw;
-        }
-        catch (TimeoutException)
-        {
-            await TerminateProcessTreeAsync(process, outputTask, errorTask);
-            throw;
-        }
+        await process.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), cancellationToken);
+
+        return new ProcessResult(process.ExitCode, await outputTask, await errorTask);
     }
 
     public Task<ProcessResult> RunAsync(string fileName, int timeoutMs = 15000, CancellationToken cancellationToken = default, params string[] arguments)
     {
         return RunAsync(fileName, arguments, timeoutMs, cancellationToken);
-    }
-
-    private static async Task TerminateProcessTreeAsync(
-        Process process,
-        Task<string> outputTask,
-        Task<string> errorTask)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (InvalidOperationException)
-        {
-        }
-
-        try
-        {
-            await process.WaitForExitAsync(CancellationToken.None);
-        }
-        catch (InvalidOperationException)
-        {
-        }
-
-        try
-        {
-            await Task.WhenAll(outputTask, errorTask);
-        }
-        catch
-        {
-        }
     }
 }
